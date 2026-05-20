@@ -860,11 +860,19 @@
 
 /* ── Login overlay logic ── */
 function showLoginOverlay() {
-  document.getElementById('loginOverlay').style.display = 'flex';
+  const overlay = document.getElementById('loginOverlay');
+  const pwInput   = document.getElementById('loginPwInput');
+  const errEl     = document.getElementById('loginError');
+  // If overlay is already visible, do NOT clear the password — background API
+  // polls (401) would otherwise wipe the input every second while the user types.
+  const alreadyVisible = window.getComputedStyle(overlay).display !== 'none';
+  overlay.style.display = 'flex';
   document.getElementById('app').style.display = 'none';
-  document.getElementById('loginPwInput').value = '';
-  document.getElementById('loginError').style.display = 'none';
-  setTimeout(() => document.getElementById('loginPwInput').focus(), 50);
+  if (!alreadyVisible) {
+    pwInput.value = '';
+    errEl.style.display = 'none';
+    setTimeout(() => pwInput.focus(), 50);
+  }
 }
 function hideLoginOverlay() {
   document.getElementById('loginOverlay').style.display = 'none';
