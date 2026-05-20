@@ -43,6 +43,22 @@
     .stat-label { font-size: 11px; color: var(--text-muted); }
     .stat-val   { font-size: 18px; font-weight: 700; line-height: 1.2; }
 
+    .target-id-label {
+      font-size: 11px;
+      font-weight: 700;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      color: #79c0ff;
+      letter-spacing: 0.02em;
+      margin-right: 6px;
+      flex-shrink: 0;
+    }
+    [data-bs-theme="light"] .target-id-label { color: #0969da; }
+    .target-card-title .target-name { color: #e6edf3; font-weight: 600; }
+    [data-bs-theme="light"] .target-card-title .target-name { color: #1f2328; }
+
+    .scope-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+    .scope-pick .filter-tag { cursor: pointer; user-select: none; }
+
     /* ---- Modal ---- */
     .modal-content { background: var(--bg-card); border: 1px solid var(--border); }
     .modal-header, .modal-footer { border-color: var(--border) !important; }
@@ -362,7 +378,9 @@
             <!-- header row -->
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div class="overflow-hidden me-2">
-                <div class="fw-semibold text-truncate" :title="t.name">{{ t.name }}</div>
+                <div class="fw-semibold text-truncate target-card-title" :title="'ID '+t.id+' · '+t.name">
+                  <span class="target-id-label">ID {{ t.id }}</span><span class="target-name">{{ t.name }}</span>
+                </div>
                 <div class="text-truncate" style="font-size:12px;color:var(--text-muted)" :title="t.address">{{ t.address }}</div>
               </div>
               <div class="d-flex align-items-center gap-2 flex-shrink-0">
@@ -936,17 +954,27 @@
                 <option value="ids">指定 ID</option>
               </select>
             </div>
-            <div class="col-md-8" v-if="scheduleForm.scope_type!=='all'">
-              <label class="form-label text-secondary">{{ scheduleForm.scope_type==='ids' ? '目标 ID（逗号分隔）' : (scheduleForm.scope_type==='group'?'分组名':'标签名') }}</label>
-              <input v-if="scheduleForm.scope_type==='ids'" class="form-control form-control-sm" v-model="scheduleForm.scope_value" placeholder="1,2,3" />
-              <select v-else-if="scheduleForm.scope_type==='group'" class="form-select form-select-sm" v-model="scheduleForm.scope_value">
-                <option value="">请选择</option>
-                <option v-for="g in allGroups" :key="g" :value="g">{{ g }}</option>
-              </select>
-              <select v-else class="form-select form-select-sm" v-model="scheduleForm.scope_value">
-                <option value="">请选择</option>
-                <option v-for="tg in allTags" :key="tg" :value="tg">{{ tg }}</option>
-              </select>
+            <div class="col-12" v-if="scheduleForm.scope_type==='group'">
+              <label class="form-label text-secondary">分组（可多选）</label>
+              <div class="scope-pick" v-if="allGroups.length">
+                <button type="button" v-for="g in allGroups" :key="g" class="filter-tag"
+                  :class="{active: scheduleForm.scopeGroups.includes(g)}"
+                  @click="toggleScheduleGroup(g)">{{ g }}</button>
+              </div>
+              <div v-else class="small" style="color:var(--text-muted)">暂无分组，请先在目标上设置分组名</div>
+            </div>
+            <div class="col-12" v-else-if="scheduleForm.scope_type==='tag'">
+              <label class="form-label text-secondary">标签（可多选）</label>
+              <div class="scope-pick" v-if="allTags.length">
+                <button type="button" v-for="tg in allTags" :key="tg" class="filter-tag"
+                  :class="{active: scheduleForm.scopeTags.includes(tg)}"
+                  @click="toggleScheduleTag(tg)">{{ tg }}</button>
+              </div>
+              <div v-else class="small" style="color:var(--text-muted)">暂无标签，请先在目标上设置标签</div>
+            </div>
+            <div class="col-12" v-else-if="scheduleForm.scope_type==='ids'">
+              <label class="form-label text-secondary">目标 ID（逗号分隔，见卡片上的 ID）</label>
+              <input class="form-control form-control-sm" v-model="scheduleForm.scope_value" placeholder="1,2,3" />
             </div>
             <div class="col-12">
               <label class="form-label text-secondary">星期（0=周一 … 6=周日）</label>
@@ -1165,6 +1193,8 @@ createApp({
       name: '',
       scope_type: 'all',
       scope_value: '',
+      scopeGroups: [],
+      scopeTags: [],
       action: 'disable',
       time_hhmm: '22:00',
       weekdayList: [0, 1, 2, 3, 4, 5, 6],
@@ -2051,10 +2081,31 @@ createApp({
 
     function formatScope(s) {
       if (s.scope_type === 'all') return '全部';
-      if (s.scope_type === 'group') return `分组: ${s.scope_value}`;
-      if (s.scope_type === 'tag') return `标签: ${s.scope_value}`;
-      if (s.scope_type === 'ids') return `ID: ${s.scope_value}`;
+      const parts = (s.scope_value || '').split(',').map(x => x.trim()).filter(Boolean);
+      if (s.scope_type === 'group') return '分组: ' + (parts.join('、') || '-');
+      if (s.scope_type === 'tag') return '标签: ' + (parts.join('、') || '-');
+      if (s.scope_type === 'ids') return 'ID: ' + (parts.join(',') || '-');
       return s.scope_type;
+    }
+
+    function toggleScheduleGroup(g) {
+      const list = scheduleForm.value.scopeGroups;
+      const i = list.indexOf(g);
+      if (i >= 0) list.splice(i, 1);
+      else list.push(g);
+    }
+
+    function toggleScheduleTag(tg) {
+      const list = scheduleForm.value.scopeTags;
+      const i = list.indexOf(tg);
+      if (i >= 0) list.splice(i, 1);
+      else list.push(tg);
+    }
+
+    function scheduleScopeValueFromForm(f) {
+      if (f.scope_type === 'group') return f.scopeGroups.join(',');
+      if (f.scope_type === 'tag') return f.scopeTags.join(',');
+      return (f.scope_value || '').trim();
     }
 
     function resetScheduleForm() {
@@ -2075,10 +2126,13 @@ createApp({
     function editSchedule(s) {
       scheduleEditId.value = s.id;
       const days = (s.weekdays || '0,1,2,3,4,5,6').split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n));
+      const scopeParts = (s.scope_value || '').split(',').map(x => x.trim()).filter(Boolean);
       scheduleForm.value = {
         name: s.name,
         scope_type: s.scope_type,
-        scope_value: s.scope_value || '',
+        scope_value: s.scope_type === 'ids' ? (s.scope_value || '') : '',
+        scopeGroups: s.scope_type === 'group' ? scopeParts : [],
+        scopeTags: s.scope_type === 'tag' ? scopeParts : [],
         action: s.action,
         time_hhmm: s.time_hhmm,
         weekdayList: days.length ? days : [0, 1, 2, 3, 4, 5, 6],
@@ -2092,8 +2146,15 @@ createApp({
       if (!f.time_hhmm.match(/^([01]\d|2[0-3]):[0-5]\d$/)) {
         toast('提示', '时间格式须为 HH:MM', 'info'); return;
       }
-      if (f.scope_type !== 'all' && !f.scope_value) {
-        toast('提示', '请填写范围', 'info'); return;
+      const scopeVal = scheduleScopeValueFromForm(f);
+      if (f.scope_type === 'group' && !f.scopeGroups.length) {
+        toast('提示', '请至少选择一个分组', 'info'); return;
+      }
+      if (f.scope_type === 'tag' && !f.scopeTags.length) {
+        toast('提示', '请至少选择一个标签', 'info'); return;
+      }
+      if (f.scope_type === 'ids' && !scopeVal) {
+        toast('提示', '请填写目标 ID', 'info'); return;
       }
       if (!f.weekdayList.length) {
         toast('提示', '请至少选择一个星期', 'info'); return;
@@ -2101,7 +2162,7 @@ createApp({
       const body = {
         name: f.name.trim(),
         scope_type: f.scope_type,
-        scope_value: f.scope_value || '',
+        scope_value: scopeVal,
         action: f.action,
         time_hhmm: f.time_hhmm,
         weekdays: f.weekdayList.slice().sort((a, b) => a - b).join(','),
@@ -2208,6 +2269,7 @@ createApp({
       batchForm, batchSaving, openBatchModal, doBatchEnabled,
       schedules, scheduleForm, scheduleEditId, scheduleSaving, weekdayLabels,
       openScheduleModal, resetScheduleForm, saveSchedule, editSchedule, deleteSchedule,
+      toggleScheduleGroup, toggleScheduleTag,
       formatWeekdays, formatScope,
       allGroups, allTags, filteredTargets, visibleGroups,
       packetBar,

@@ -17,7 +17,7 @@ ActionType = Literal["enable", "disable"]
 class ScheduleCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=64)
     scope_type: ScopeType
-    scope_value: str = Field("", max_length=256)
+    scope_value: str = Field("", max_length=512)
     action: ActionType
     time_hhmm: str = Field(..., description="Local time HH:MM (24h)")
     weekdays: str = Field(
@@ -47,7 +47,7 @@ class ScheduleCreate(BaseModel):
 class ScheduleUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=64)
     scope_type: Optional[ScopeType] = None
-    scope_value: Optional[str] = Field(None, max_length=256)
+    scope_value: Optional[str] = Field(None, max_length=512)
     action: Optional[ActionType] = None
     time_hhmm: Optional[str] = None
     weekdays: Optional[str] = None

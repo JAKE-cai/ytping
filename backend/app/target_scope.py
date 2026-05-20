@@ -26,11 +26,21 @@ async def fetch_all_targets(db: aiosqlite.Connection) -> List[dict]:
         return [dict(r) for r in await cur.fetchall()]
 
 
+def _csv_set(value: str) -> set[str]:
+    return {x.strip() for x in (value or "").split(",") if x.strip()}
+
+
 def _tag_matches(tags_str: str, tag: str) -> bool:
     if not tag:
         return False
     parts = [x.strip() for x in (tags_str or "").split(",")]
     return tag in parts
+
+
+def _tags_match_any(tags_str: str, wanted: set[str]) -> bool:
+    if not wanted:
+        return False
+    return any(_tag_matches(tags_str, t) for t in wanted)
 
 
 async def resolve_target_ids(
@@ -53,10 +63,16 @@ async def resolve_target_ids(
         return [r["id"] for r in rows]
 
     if scope_type == SCOPE_GROUP:
-        return [r["id"] for r in rows if r.get("group_name") == scope_value]
+        groups = _csv_set(scope_value)
+        if not groups:
+            return []
+        return [r["id"] for r in rows if r.get("group_name") in groups]
 
     if scope_type == SCOPE_TAG:
-        return [r["id"] for r in rows if _tag_matches(r.get("tags", ""), scope_value)]
+        tags = _csv_set(scope_value)
+        if not tags:
+            return []
+        return [r["id"] for r in rows if _tags_match_any(r.get("tags", ""), tags)]
 
     if scope_type == SCOPE_IDS:
         ids = []
