@@ -43,7 +43,7 @@ DB_PATH=./dev.db uvicorn app.main:app --reload --port 8000
 ## 目录结构
 
 ```
-network-monitor/
+ytping/
 ├── Dockerfile
 ├── docker-compose.yml
 ├── backend/
