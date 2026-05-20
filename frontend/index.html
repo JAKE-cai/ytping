@@ -212,14 +212,46 @@
     [data-bs-theme="light"] .form-control::placeholder,
     [data-bs-theme="light"] .form-select::placeholder { color: #8c959f !important; }
 
-    /* Table */
+    /* Table — table-dark keeps dark-theme text vars; override all row states for light mode */
     [data-bs-theme="light"] .table-dark {
-      --bs-table-bg: transparent;
-      --bs-table-striped-bg: #f6f8fa;
+      --bs-table-bg: #ffffff;
       --bs-table-color: #1f2328;
+      --bs-table-striped-bg: #eef1f5;
+      --bs-table-striped-color: #1f2328;
+      --bs-table-active-bg: #dde4ec;
+      --bs-table-active-color: #1f2328;
+      --bs-table-hover-bg: #e8ecf1;
+      --bs-table-hover-color: #1f2328;
       --bs-table-border-color: var(--border);
+      color: #1f2328;
+    }
+    [data-bs-theme="light"] .table-dark thead th {
+      color: #424a53 !important;
+      background-color: #f0f2f5 !important;
+      border-color: var(--border) !important;
+    }
+    [data-bs-theme="light"] .table-dark tbody td {
+      color: #1f2328 !important;
+      border-color: var(--border) !important;
+    }
+    [data-bs-theme="light"] .table-dark.table-striped > tbody > tr:nth-of-type(odd) > * {
+      --bs-table-color-type: #1f2328;
+      --bs-table-bg-type: #eef1f5;
+      color: #1f2328 !important;
+      background-color: #eef1f5 !important;
+    }
+    [data-bs-theme="light"] .table-dark.table-striped > tbody > tr:nth-of-type(even) > * {
+      color: #1f2328 !important;
+      background-color: #ffffff !important;
     }
     [data-bs-theme="light"] .table th { color: #57606a; }
+    [data-bs-theme="light"] .loss-events-thead {
+      background-color: #f0f2f5 !important;
+    }
+    [data-bs-theme="light"] .loss-events-time {
+      color: #1f2328 !important;
+      font-weight: 500;
+    }
 
     /* Progress bar */
     [data-bs-theme="light"] .progress { background: #d0d7de; }
@@ -639,13 +671,13 @@
                 <small class="text-secondary">共 {{ lossTotal }} 条丢包记录</small>
               </div>
               <div class="table-responsive" style="max-height:380px;overflow-y:auto">
-                <table class="table table-dark table-sm table-striped mb-0">
-                  <thead class="sticky-top" style="background:var(--bg-card)">
+                <table class="table table-dark table-sm table-striped mb-0 loss-events-table">
+                  <thead class="sticky-top loss-events-thead">
                     <tr><th>时间</th><th>状态</th></tr>
                   </thead>
                   <tbody>
                     <tr v-for="ev in lossItems" :key="ev.ts">
-                      <td>{{ fmtDt(ev.ts) }}</td>
+                      <td class="loss-events-time">{{ fmtDt(ev.ts) }}</td>
                       <td><span class="badge badge-loss">丢包</span></td>
                     </tr>
                     <tr v-if="lossItems.length===0">
