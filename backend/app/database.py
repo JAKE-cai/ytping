@@ -56,12 +56,35 @@ CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL DEFAULT ''
 );
+
+CREATE TABLE IF NOT EXISTS target_schedules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    scope_type  TEXT    NOT NULL,
+    scope_value TEXT    NOT NULL DEFAULT '',
+    action      TEXT    NOT NULL,
+    time_hhmm   TEXT    NOT NULL,
+    weekdays    TEXT    NOT NULL DEFAULT '0,1,2,3,4,5,6',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+);
 """
 
 
 _MIGRATIONS = [
     "ALTER TABLE targets ADD COLUMN group_name TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE targets ADD COLUMN tags       TEXT NOT NULL DEFAULT ''",
+    """CREATE TABLE IF NOT EXISTS target_schedules (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    scope_type  TEXT    NOT NULL,
+    scope_value TEXT    NOT NULL DEFAULT '',
+    action      TEXT    NOT NULL,
+    time_hhmm   TEXT    NOT NULL,
+    weekdays    TEXT    NOT NULL DEFAULT '0,1,2,3,4,5,6',
+    enabled     INTEGER NOT NULL DEFAULT 1,
+    created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+)""",
 ]
 
 

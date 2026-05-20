@@ -12,8 +12,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from .auth import ensure_admin, make_auth_dependency
 from .compressor import run_compressor
 from .database import DB_PATH, init_db
-from .routers import metrics, targets
+from .routers import metrics, schedules, targets
 from .routers import auth as auth_router
+from .scheduler import run_schedule_checker
 from .state import ping_manager
 
 _require_auth = make_auth_dependency(lambda: DB_PATH)
@@ -55,6 +56,7 @@ app.add_middleware(
 
 app.include_router(auth_router.router)
 app.include_router(targets.router, dependencies=[Depends(_require_auth)])
+app.include_router(schedules.router, dependencies=[Depends(_require_auth)])
 app.include_router(metrics.router, dependencies=[Depends(_require_auth)])
 
 
@@ -69,6 +71,7 @@ async def on_startup() -> None:
     await ensure_admin(DB_PATH)
     await ping_manager.start()
     asyncio.create_task(run_compressor(DB_PATH), name="compressor")
+    asyncio.create_task(run_schedule_checker(DB_PATH), name="schedule-checker")
     logger.info("Application started")
 
 

@@ -1,5 +1,5 @@
 import re
-from typing import Optional
+from typing import Literal, Optional
 
 import aiosqlite
 from fastapi import APIRouter, HTTPException
@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from ..database import DB_PATH
 from ..state import ping_manager
+from ..target_scope import batch_set_enabled, resolve_target_ids
 
 router = APIRouter(prefix="/api/targets", tags=["targets"])
 
@@ -52,6 +53,15 @@ class TargetCreate(BaseModel):
         return v.strip()
 
 
+class BatchEnabledBody(BaseModel):
+    enabled: bool
+    scope_type: Literal["all", "group", "tag", "ids", "filtered"] = "all"
+    scope_value: str = Field("", max_length=256)
+    filter_group: str = Field("", max_length=64)
+    filter_tag: str = Field("", max_length=64)
+    filter_search: str = Field("", max_length=128)
+
+
 class TargetUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=64)
     address: Optional[str] = None
@@ -81,6 +91,22 @@ async def list_targets():
         ) as cur:
             rows = await cur.fetchall()
     return [dict(r) for r in rows]
+
+
+@router.post("/batch-enabled")
+async def batch_enabled(body: BatchEnabledBody):
+    """Enable or disable many targets by scope (all / group / tag / ids / current filters)."""
+    ids = await resolve_target_ids(
+        DB_PATH,
+        body.scope_type,
+        body.scope_value,
+        filter_group=body.filter_group,
+        filter_tag=body.filter_tag,
+        filter_search=body.filter_search,
+    )
+    if not ids:
+        raise HTTPException(400, "没有匹配的目标")
+    return await batch_set_enabled(DB_PATH, ids, body.enabled)
 
 
 @router.get("/groups")

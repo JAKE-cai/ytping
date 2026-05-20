@@ -283,6 +283,12 @@
       <button class="btn btn-sm btn-outline-secondary py-0" @click="fetchAll" :disabled="loading">
         <i class="bi bi-arrow-clockwise me-1" :class="{'spin': loading}"></i>刷新
       </button>
+      <button class="btn btn-sm btn-outline-secondary py-0" @click="openBatchModal" title="批量启用/停用">
+        <i class="bi bi-toggles me-1"></i>批量启停
+      </button>
+      <button class="btn btn-sm btn-outline-secondary py-0" @click="openScheduleModal" title="定时启停">
+        <i class="bi bi-clock-history me-1"></i>定时任务
+      </button>
       <button class="btn btn-sm btn-primary py-0" @click="openAddModal">
         <i class="bi bi-plus-lg me-1"></i>添加目标
       </button>
@@ -816,6 +822,159 @@
     </div>
   </div>
 
+  <!-- ═══════════════════════ Batch enable/disable ═══════════════════════ -->
+  <div class="modal fade" id="modalBatch" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title"><i class="bi bi-toggles me-2"></i>批量启停</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-secondary">操作</label>
+            <div class="btn-group w-100" role="group">
+              <button type="button" class="btn btn-sm" :class="batchForm.enabled?'btn-success':'btn-outline-secondary'" @click="batchForm.enabled=true">启用</button>
+              <button type="button" class="btn btn-sm" :class="!batchForm.enabled?'btn-warning':'btn-outline-secondary'" @click="batchForm.enabled=false">停用</button>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">目标范围</label>
+            <select class="form-select form-select-sm" v-model="batchForm.scope_type">
+              <option value="filtered">当前筛选结果（{{ filteredTargets.length }} 个）</option>
+              <option value="all">全部目标（{{ targets.length }} 个）</option>
+              <option value="group">按分组</option>
+              <option value="tag">按标签</option>
+            </select>
+          </div>
+          <div class="mb-3" v-if="batchForm.scope_type==='group'">
+            <label class="form-label text-secondary">分组名</label>
+            <select class="form-select form-select-sm" v-model="batchForm.scope_value">
+              <option value="">请选择</option>
+              <option v-for="g in allGroups" :key="g" :value="g">{{ g }}</option>
+            </select>
+          </div>
+          <div class="mb-3" v-if="batchForm.scope_type==='tag'">
+            <label class="form-label text-secondary">标签</label>
+            <select class="form-select form-select-sm" v-model="batchForm.scope_value">
+              <option value="">请选择</option>
+              <option v-for="tg in allTags" :key="tg" :value="tg">{{ tg }}</option>
+            </select>
+          </div>
+          <p class="mb-0 small" style="color:var(--text-muted)">停用后不再 ping，适合夜间关机等场景。</p>
+        </div>
+        <div class="modal-footer py-2">
+          <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-sm btn-primary" @click="doBatchEnabled" :disabled="batchSaving">
+            <span class="spinner-border spinner-border-sm me-1" v-if="batchSaving"></span>执行
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Schedule rules ═══════════════════════ -->
+  <div class="modal fade" id="modalSchedule" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>定时启停</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <p class="small mb-3" style="color:var(--text-muted)">
+            按容器<strong>本地时间</strong>每天触发（可通过环境变量 <code>TZ</code> 设置时区，如 <code>Asia/Shanghai</code>）。建议夜间「停用」、早晨「启用」各建一条规则。
+          </p>
+          <div class="table-responsive mb-3" v-if="schedules.length">
+            <table class="table table-sm table-hover align-middle mb-0" style="font-size:13px">
+              <thead>
+                <tr style="color:var(--text-muted)">
+                  <th>名称</th><th>时间</th><th>星期</th><th>范围</th><th>动作</th><th>状态</th><th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in schedules" :key="s.id">
+                  <td>{{ s.name }}</td>
+                  <td>{{ s.time_hhmm }}</td>
+                  <td>{{ formatWeekdays(s.weekdays) }}</td>
+                  <td>{{ formatScope(s) }}</td>
+                  <td><span :class="s.action==='enable'?'text-success':'text-warning'">{{ s.action==='enable'?'启用':'停用' }}</span></td>
+                  <td>{{ s.enabled ? '开' : '关' }}</td>
+                  <td class="text-nowrap">
+                    <button class="btn btn-link btn-sm p-0 me-2" @click="editSchedule(s)">编辑</button>
+                    <button class="btn btn-link btn-sm p-0 text-danger" @click="deleteSchedule(s)">删除</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div v-else class="text-center py-3" style="color:var(--text-muted);font-size:13px">暂无定时任务</div>
+          <hr style="border-color:var(--border)">
+          <h6 class="mb-3">{{ scheduleEditId ? '编辑任务' : '新建任务' }}</h6>
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label text-secondary">名称</label>
+              <input class="form-control form-control-sm" v-model="scheduleForm.name" placeholder="如：夜间停用" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label text-secondary">时间 (HH:MM)</label>
+              <input class="form-control form-control-sm" v-model="scheduleForm.time_hhmm" placeholder="22:00" />
+            </div>
+            <div class="col-md-3">
+              <label class="form-label text-secondary">动作</label>
+              <select class="form-select form-select-sm" v-model="scheduleForm.action">
+                <option value="disable">停用</option>
+                <option value="enable">启用</option>
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label text-secondary">范围类型</label>
+              <select class="form-select form-select-sm" v-model="scheduleForm.scope_type">
+                <option value="all">全部目标</option>
+                <option value="group">分组</option>
+                <option value="tag">标签</option>
+                <option value="ids">指定 ID</option>
+              </select>
+            </div>
+            <div class="col-md-8" v-if="scheduleForm.scope_type!=='all'">
+              <label class="form-label text-secondary">{{ scheduleForm.scope_type==='ids' ? '目标 ID（逗号分隔）' : (scheduleForm.scope_type==='group'?'分组名':'标签名') }}</label>
+              <input v-if="scheduleForm.scope_type==='ids'" class="form-control form-control-sm" v-model="scheduleForm.scope_value" placeholder="1,2,3" />
+              <select v-else-if="scheduleForm.scope_type==='group'" class="form-select form-select-sm" v-model="scheduleForm.scope_value">
+                <option value="">请选择</option>
+                <option v-for="g in allGroups" :key="g" :value="g">{{ g }}</option>
+              </select>
+              <select v-else class="form-select form-select-sm" v-model="scheduleForm.scope_value">
+                <option value="">请选择</option>
+                <option v-for="tg in allTags" :key="tg" :value="tg">{{ tg }}</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label text-secondary">星期（0=周一 … 6=周日）</label>
+              <div class="d-flex flex-wrap gap-2">
+                <label v-for="(lbl, wd) in weekdayLabels" :key="wd" class="form-check form-check-inline mb-0" style="font-size:13px">
+                  <input class="form-check-input" type="checkbox" :value="wd" v-model="scheduleForm.weekdayList" />
+                  {{ lbl }}
+                </label>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="schEnabled" v-model="scheduleForm.enabled" />
+                <label class="form-check-label" for="schEnabled">启用此定时任务</label>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button class="btn btn-sm btn-secondary" @click="resetScheduleForm">清空表单</button>
+          <button class="btn btn-sm btn-primary" @click="saveSchedule" :disabled="scheduleSaving">
+            <span class="spinner-border spinner-border-sm me-1" v-if="scheduleSaving"></span>{{ scheduleEditId ? '保存' : '添加' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- ═══════════════════════ Change Password Modal ═══════════════════════ -->
   <div class="modal fade" id="modalChangePw" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-dialog-centered" style="max-width:400px">
@@ -990,6 +1149,30 @@ createApp({
     const filterGroup  = ref('');
     const filterTag    = ref('');
     const filterSearch = ref('');
+
+    // batch / schedules
+    const batchForm = ref({
+      enabled: false,
+      scope_type: 'filtered',
+      scope_value: '',
+    });
+    const batchSaving = ref(false);
+    const schedules = ref([]);
+    const scheduleEditId = ref(null);
+    const scheduleSaving = ref(false);
+    const weekdayLabels = ['周一','周二','周三','周四','周五','周六','周日'];
+    const defaultScheduleForm = () => ({
+      name: '',
+      scope_type: 'all',
+      scope_value: '',
+      action: 'disable',
+      time_hhmm: '22:00',
+      weekdayList: [0, 1, 2, 3, 4, 5, 6],
+      enabled: true,
+    });
+    const scheduleForm = ref(defaultScheduleForm());
+    let bsBatch = null;
+    let bsSchedule = null;
 
     // detail modal
     const sel         = ref(null);
@@ -1824,6 +2007,136 @@ createApp({
       }
     }
 
+    function openBatchModal() {
+      batchForm.value = {
+        enabled: false,
+        scope_type: 'filtered',
+        scope_value: '',
+      };
+      bsBatch.show();
+    }
+
+    async function doBatchEnabled() {
+      const f = batchForm.value;
+      if ((f.scope_type === 'group' || f.scope_type === 'tag') && !f.scope_value) {
+        toast('提示', '请选择分组或标签', 'info');
+        return;
+      }
+      batchSaving.value = true;
+      try {
+        const body = {
+          enabled: f.enabled,
+          scope_type: f.scope_type,
+          scope_value: f.scope_value || '',
+          filter_group: filterGroup.value,
+          filter_tag: filterTag.value,
+          filter_search: filterSearch.value,
+        };
+        const res = await api('POST', '/targets/batch-enabled', body);
+        toast('成功', `已${f.enabled ? '启用' : '停用'} ${res.updated} 个目标`, 'success');
+        bsBatch.hide();
+        await fetchAll();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        batchSaving.value = false;
+      }
+    }
+
+    function formatWeekdays(csv) {
+      const set = new Set((csv || '').split(',').map(s => s.trim()).filter(s => s !== ''));
+      if (set.size === 7 || set.size === 0) return '每天';
+      return weekdayLabels.filter((_, i) => set.has(String(i))).join('、');
+    }
+
+    function formatScope(s) {
+      if (s.scope_type === 'all') return '全部';
+      if (s.scope_type === 'group') return `分组: ${s.scope_value}`;
+      if (s.scope_type === 'tag') return `标签: ${s.scope_value}`;
+      if (s.scope_type === 'ids') return `ID: ${s.scope_value}`;
+      return s.scope_type;
+    }
+
+    function resetScheduleForm() {
+      scheduleEditId.value = null;
+      scheduleForm.value = defaultScheduleForm();
+    }
+
+    async function loadSchedules() {
+      schedules.value = await api('GET', '/schedules');
+    }
+
+    function openScheduleModal() {
+      resetScheduleForm();
+      loadSchedules();
+      bsSchedule.show();
+    }
+
+    function editSchedule(s) {
+      scheduleEditId.value = s.id;
+      const days = (s.weekdays || '0,1,2,3,4,5,6').split(',').map(x => parseInt(x.trim(), 10)).filter(n => !isNaN(n));
+      scheduleForm.value = {
+        name: s.name,
+        scope_type: s.scope_type,
+        scope_value: s.scope_value || '',
+        action: s.action,
+        time_hhmm: s.time_hhmm,
+        weekdayList: days.length ? days : [0, 1, 2, 3, 4, 5, 6],
+        enabled: !!s.enabled,
+      };
+    }
+
+    async function saveSchedule() {
+      const f = scheduleForm.value;
+      if (!f.name.trim()) { toast('提示', '请填写名称', 'info'); return; }
+      if (!f.time_hhmm.match(/^([01]\d|2[0-3]):[0-5]\d$/)) {
+        toast('提示', '时间格式须为 HH:MM', 'info'); return;
+      }
+      if (f.scope_type !== 'all' && !f.scope_value) {
+        toast('提示', '请填写范围', 'info'); return;
+      }
+      if (!f.weekdayList.length) {
+        toast('提示', '请至少选择一个星期', 'info'); return;
+      }
+      const body = {
+        name: f.name.trim(),
+        scope_type: f.scope_type,
+        scope_value: f.scope_value || '',
+        action: f.action,
+        time_hhmm: f.time_hhmm,
+        weekdays: f.weekdayList.slice().sort((a, b) => a - b).join(','),
+        enabled: f.enabled,
+      };
+      scheduleSaving.value = true;
+      try {
+        if (scheduleEditId.value) {
+          await api('PUT', `/schedules/${scheduleEditId.value}`, body);
+          toast('成功', '定时任务已更新', 'success');
+        } else {
+          await api('POST', '/schedules', body);
+          toast('成功', '定时任务已添加', 'success');
+        }
+        resetScheduleForm();
+        await loadSchedules();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        scheduleSaving.value = false;
+      }
+    }
+
+    async function deleteSchedule(s) {
+      if (!confirm(`删除定时任务「${s.name}」？`)) return;
+      try {
+        await api('DELETE', `/schedules/${s.id}`);
+        toast('成功', '已删除', 'success');
+        if (scheduleEditId.value === s.id) resetScheduleForm();
+        await loadSchedules();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      }
+    }
+
     async function doDelete() {
       if (!delTarget.value) return;
       saving.value = true;
@@ -1848,6 +2161,8 @@ createApp({
       bsEdit     = new bootstrap.Modal(document.getElementById('modalEdit'));
       bsDelete   = new bootstrap.Modal(document.getElementById('modalDelete'));
       bsChangePw = new bootstrap.Modal(document.getElementById('modalChangePw'));
+      bsBatch    = new bootstrap.Modal(document.getElementById('modalBatch'));
+      bsSchedule = new bootstrap.Modal(document.getElementById('modalSchedule'));
 
       document.getElementById('modalDetail').addEventListener('shown.bs.modal', async () => {
         // Load live chart first (default tab)
@@ -1890,6 +2205,10 @@ createApp({
       pwForm, pwSaving, openChangePwModal, savePassword, doLogout,
       targets, statuses, recentPkts, loading, lastRefresh,
       filterGroup, filterTag, filterSearch,
+      batchForm, batchSaving, openBatchModal, doBatchEnabled,
+      schedules, scheduleForm, scheduleEditId, scheduleSaving, weekdayLabels,
+      openScheduleModal, resetScheduleForm, saveSchedule, editSchedule, deleteSchedule,
+      formatWeekdays, formatScope,
       allGroups, allTags, filteredTargets, visibleGroups,
       packetBar,
       sel, detailStatus, dTab,

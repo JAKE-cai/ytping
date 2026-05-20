@@ -39,6 +39,7 @@ gunzip -c ytping_1.3.tar.gz | docker load
 | `ENV` | `production` 时关闭 Swagger 文档（默认即为 production） | `-e ENV=production` |
 | `ALLOWED_ORIGINS` | CORS 允许来源，逗号分隔；留空则等同 `*` | `-e ALLOWED_ORIGINS=https://monitor.example.com` |
 | `PYTHONUNBUFFERED` | 建议 `1`，日志实时输出 | `-e PYTHONUNBUFFERED=1` |
+| `TZ` | 定时启停任务使用的本地时区 | `-e TZ=Asia/Shanghai` |
 
 ---
 
