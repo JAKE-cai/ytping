@@ -1,0 +1,1880 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark" id="htmlRoot">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>网络连通性监控</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+  <style>
+    :root {
+      --bg-base:   #0d1117;
+      --bg-card:   #161b22;
+      --bg-card2:  #1c2128;
+      --border:    #30363d;
+      --text-muted:#8b949e;
+    }
+    body { background: var(--bg-base); color: #e6edf3; font-size: 14px; }
+
+    /* ---- Nav ---- */
+    .top-nav { background: #010409; border-bottom: 1px solid var(--border); }
+
+    /* ---- Cards ---- */
+    .target-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: transform .15s, box-shadow .15s, border-color .15s;
+    }
+    .target-card:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0,0,0,.5); border-color: #58a6ff55; }
+    .target-card.disabled-card { opacity: .55; }
+
+    .status-ring {
+      width: 12px; height: 12px; border-radius: 50%;
+      flex-shrink: 0; margin-top: 2px;
+    }
+    .ring-good    { background: #3fb950; box-shadow: 0 0 6px #3fb950aa; }
+    .ring-warn    { background: #d29922; box-shadow: 0 0 6px #d29922aa; }
+    .ring-bad     { background: #f85149; box-shadow: 0 0 6px #f85149aa; }
+    .ring-unknown { background: #484f58; }
+    .ring-off     { background: #30363d; }
+
+    .stat-label { font-size: 11px; color: var(--text-muted); }
+    .stat-val   { font-size: 18px; font-weight: 700; line-height: 1.2; }
+
+    /* ---- Modal ---- */
+    .modal-content { background: var(--bg-card); border: 1px solid var(--border); }
+    .modal-header, .modal-footer { border-color: var(--border) !important; }
+
+    .nav-tabs { border-bottom: 1px solid var(--border) !important; }
+    .nav-tabs .nav-link { color: var(--text-muted); border: none; padding: .5rem 1.1rem; }
+    .nav-tabs .nav-link.active {
+      color: #58a6ff; background: transparent;
+      border-bottom: 2px solid #58a6ff !important;
+    }
+    .nav-tabs .nav-link:hover:not(.active) { color: #e6edf3; }
+
+    /* ---- Chart ---- */
+    #chartMain    { height: 420px; }
+    #chartLive    { height: 320px; }
+    #chartSummary { height: 320px; }
+
+    /* ---- Live / SSE indicator ---- */
+    .live-dot {
+      width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+      flex-shrink: 0;
+    }
+    .live-dot-on  { background: #3fb950; animation: livePulse 1.4s ease-in-out infinite; }
+    .live-dot-off { background: #484f58; }
+    @keyframes livePulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(63,185,80,.5); }
+      50%      { box-shadow: 0 0 0 5px rgba(63,185,80,0); }
+    }
+    .live-val { font-size: 2rem; font-weight: 700; line-height: 1; }
+    .live-stat { text-align: center; min-width: 80px; }
+    .live-stat .lbl { font-size: 11px; color: var(--text-muted); }
+
+    /* ---- Time range ---- */
+    .range-btn { font-size: 12px; padding: 3px 10px; }
+    .range-btn.active { background: #1f6feb !important; border-color: #1f6feb !important; color: #fff !important; }
+
+    /* ---- Table ---- */
+    .table-dark { --bs-table-bg: transparent; --bs-table-striped-bg: #1c2128; }
+    .table th { color: var(--text-muted); font-weight: 500; font-size: 12px; }
+
+    /* ---- Misc ---- */
+    .form-control, .form-select {
+      background: var(--bg-card2) !important;
+      border-color: var(--border) !important;
+      color: #e6edf3 !important;
+    }
+    .form-control:focus, .form-select:focus {
+      border-color: #58a6ff !important;
+      box-shadow: 0 0 0 .2rem rgba(88,166,255,.15) !important;
+    }
+    .badge-loss { background: #da3633; }
+    .progress { background: #21262d; }
+
+    .toast { border: 1px solid var(--border); background: var(--bg-card2); }
+    .toast-header { background: var(--bg-card2); }
+
+    .empty-state { color: var(--text-muted); }
+
+    /* global stats bar */
+    .stats-bar { background: #010409; border-bottom: 1px solid var(--border); font-size: 12px; }
+    .stats-bar span { color: var(--text-muted); }
+    .stats-bar strong { color: #e6edf3; }
+
+    .ping-interval-badge {
+      font-size: 10px; color: var(--text-muted);
+      border: 1px solid var(--border); border-radius: 4px; padding: 0 5px;
+    }
+
+    /* ---- 5-second packet bar ---- */
+    .packet-bar {
+      display: flex; gap: 2px; height: 6px; border-radius: 3px; overflow: hidden; margin-top: 8px;
+    }
+    .packet-bar .seg {
+      flex: 1; border-radius: 1px; min-width: 4px;
+    }
+    .seg-ok   { background: #3fb950; }
+    .seg-warn { background: #d29922; }
+    .seg-bad  { background: #f85149; }
+    .seg-none { background: var(--border); }
+
+    /* ---- Filter bar ---- */
+    .filter-bar { background: var(--bg-card2); border-bottom: 1px solid var(--border); }
+    .filter-tag {
+      font-size: 11px; padding: 2px 8px; border-radius: 10px; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+      transition: all .15s;
+    }
+    .filter-tag.active {
+      background: #1f6feb; border-color: #1f6feb; color: #fff;
+    }
+    .filter-tag:hover:not(.active) { border-color: #58a6ff; color: #58a6ff; }
+    [data-bs-theme="light"] .filter-tag:hover:not(.active) { border-color: #0969da; color: #0969da; }
+
+    /* ---- Group badge on card ---- */
+    .group-badge {
+      font-size: 10px; padding: 1px 6px; border-radius: 8px;
+      background: #1f6feb22; color: #58a6ff; border: 1px solid #58a6ff44;
+    }
+    [data-bs-theme="light"] .group-badge { background: #0969da15; color: #0550ae; border-color: #0969da44; }
+    .tag-chip {
+      font-size: 10px; padding: 1px 5px; border-radius: 6px;
+      background: var(--bg-card2); border: 1px solid var(--border); color: var(--text-muted);
+    }
+
+    /* ---- Light theme overrides ---- */
+    [data-bs-theme="light"] {
+      --bg-base:   #f6f8fa;
+      --bg-card:   #ffffff;
+      --bg-card2:  #f0f2f5;
+      --border:    #d0d7de;
+      --text-muted:#57606a;
+    }
+    /* Base */
+    [data-bs-theme="light"] body { background: var(--bg-base); color: #1f2328; }
+
+    /* Navbar & stats bar */
+    [data-bs-theme="light"] .top-nav  { background: #ffffff; color: #1f2328; }
+    [data-bs-theme="light"] .stats-bar { background: #f0f2f5; }
+    [data-bs-theme="light"] .stats-bar span { color: #57606a; }
+    [data-bs-theme="light"] .stats-bar strong { color: #1f2328; }
+
+    /* Cards */
+    [data-bs-theme="light"] .target-card { background: var(--bg-card); color: #1f2328; }
+    [data-bs-theme="light"] .target-card:hover { box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+
+    /* Modal */
+    [data-bs-theme="light"] .modal-content { background: var(--bg-card); color: #1f2328; }
+    [data-bs-theme="light"] .modal-header  { color: #1f2328; }
+    /* btn-close-white adds filter:invert(1) for dark bgs — remove it in light mode */
+    [data-bs-theme="light"] .btn-close-white { filter: none !important; opacity: .6; }
+    [data-bs-theme="light"] .btn-close-white:hover { opacity: 1; }
+
+    /* Dropdown */
+    [data-bs-theme="light"] .dropdown-menu { background: var(--bg-card) !important; border-color: var(--border) !important; }
+    [data-bs-theme="light"] .dropdown-item { color: #1f2328 !important; }
+    [data-bs-theme="light"] .dropdown-item:hover { background: var(--bg-card2) !important; }
+    [data-bs-theme="light"] .dropdown-divider { border-color: var(--border) !important; }
+
+    /* Nav tabs */
+    [data-bs-theme="light"] .nav-tabs .nav-link { color: var(--text-muted); }
+    [data-bs-theme="light"] .nav-tabs .nav-link:hover:not(.active) { color: #1f2328; }
+    [data-bs-theme="light"] .nav-tabs .nav-link.active { color: #0969da; border-bottom-color: #0969da !important; }
+
+    /* Form controls — remove hardcoded dark text/bg */
+    [data-bs-theme="light"] .form-control,
+    [data-bs-theme="light"] .form-select {
+      background: #ffffff !important;
+      border-color: var(--border) !important;
+      color: #1f2328 !important;
+    }
+    [data-bs-theme="light"] .form-control::placeholder,
+    [data-bs-theme="light"] .form-select::placeholder { color: #8c959f !important; }
+
+    /* Table */
+    [data-bs-theme="light"] .table-dark {
+      --bs-table-bg: transparent;
+      --bs-table-striped-bg: #f6f8fa;
+      --bs-table-color: #1f2328;
+      --bs-table-border-color: var(--border);
+    }
+    [data-bs-theme="light"] .table th { color: #57606a; }
+
+    /* Progress bar */
+    [data-bs-theme="light"] .progress { background: #d0d7de; }
+
+    /* Pagination */
+    [data-bs-theme="light"] .page-link { background: var(--bg-card); border-color: var(--border); color: #1f2328; }
+    [data-bs-theme="light"] .page-item.disabled .page-link { color: #8c959f; }
+
+    /* Toasts */
+    [data-bs-theme="light"] .toast { background: var(--bg-card); border-color: var(--border); color: #1f2328; }
+    [data-bs-theme="light"] .toast-header { background: var(--bg-card2); color: #1f2328; border-bottom-color: var(--border); }
+    [data-bs-theme="light"] .toast .btn-close { filter: none !important; }
+
+    /* Ping interval badge */
+    [data-bs-theme="light"] .ping-interval-badge { color: #57606a; border-color: var(--border); }
+
+    /* Stat labels */
+    [data-bs-theme="light"] .stat-label { color: #57606a; }
+    [data-bs-theme="light"] .live-stat .lbl { color: #57606a; }
+
+    /* Misc text that has hardcoded dark-mode color in inline styles — target via wrapper */
+    [data-bs-theme="light"] .text-secondary { color: #57606a !important; }
+    [data-bs-theme="light"] small { color: #57606a; }
+
+    /* Stats strip row background */
+    [data-bs-theme="light"] [style*="background:var(--bg-card2)"] { background: var(--bg-card2) !important; }
+
+    /* Spinner / empty-state */
+    [data-bs-theme="light"] .empty-state { color: #57606a; }
+
+    /* ---- Login overlay ---- */
+    #loginOverlay {
+      position: fixed; inset: 0; z-index: 9999;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(1,4,9,.85);
+      backdrop-filter: blur(6px);
+    }
+    [data-bs-theme="light"] #loginOverlay { background: rgba(230,235,240,.9); }
+    .login-card {
+      width: 360px; border-radius: 14px; padding: 40px 36px;
+      background: var(--bg-card); border: 1px solid var(--border);
+      box-shadow: 0 16px 48px rgba(0,0,0,.4);
+    }
+    [data-bs-theme="light"] .login-card { box-shadow: 0 8px 32px rgba(0,0,0,.15); }
+  </style>
+</head>
+<body>
+<!-- ═══════════════════════ Login overlay (outside Vue) ═══════════════════════ -->
+<div id="loginOverlay" style="display:none">
+  <div class="login-card">
+    <div class="text-center mb-4">
+      <i class="bi bi-activity fs-2 text-primary"></i>
+      <h5 class="mt-2 fw-semibold">网络连通性监控</h5>
+      <small style="color:var(--text-muted)">请输入密码登录</small>
+    </div>
+    <div class="mb-3">
+      <input id="loginPwInput" type="password" class="form-control"
+        placeholder="密码" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter') doLogin()" />
+    </div>
+    <div id="loginError" class="text-danger mb-2" style="font-size:13px;display:none"></div>
+    <button class="btn btn-primary w-100" onclick="doLogin()">
+      <span id="loginSpinner" class="spinner-border spinner-border-sm me-1" style="display:none"></span>
+      登 录
+    </button>
+  </div>
+</div>
+
+<div id="app">
+
+  <!-- ═══════════════════════ Navbar ═══════════════════════ -->
+  <nav class="top-nav px-3 py-2 d-flex align-items-center justify-content-between">
+    <span class="fw-semibold fs-6">
+      <i class="bi bi-activity text-primary me-2"></i>网络连通性监控
+    </span>
+    <div class="d-flex align-items-center gap-2">
+      <button class="btn btn-sm btn-outline-secondary py-0" @click="fetchAll" :disabled="loading">
+        <i class="bi bi-arrow-clockwise me-1" :class="{'spin': loading}"></i>刷新
+      </button>
+      <button class="btn btn-sm btn-primary py-0" @click="openAddModal">
+        <i class="bi bi-plus-lg me-1"></i>添加目标
+      </button>
+      <!-- theme toggle -->
+      <button class="btn btn-sm btn-outline-secondary py-0" @click="toggleTheme" :title="isDark?'切换浅色':'切换深色'">
+        <i class="bi" :class="isDark ? 'bi-sun' : 'bi-moon-stars'"></i>
+      </button>
+      <!-- user menu -->
+      <div class="dropdown">
+        <button class="btn btn-sm btn-outline-secondary py-0" data-bs-toggle="dropdown">
+          <i class="bi bi-person-circle me-1"></i>admin
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" style="font-size:13px">
+          <li><a class="dropdown-item" href="#" @click.prevent="openChangePwModal">
+            <i class="bi bi-key me-2"></i>修改密码
+          </a></li>
+          <li><hr class="dropdown-divider my-1"></li>
+          <li><a class="dropdown-item text-danger" href="#" @click.prevent="doLogout">
+            <i class="bi bi-box-arrow-right me-2"></i>退出登录
+          </a></li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- ═══════════════════════ Stats bar ═══════════════════════ -->
+  <div class="stats-bar px-3 py-1 d-flex gap-4 flex-wrap">
+    <span>监控目标 <strong>{{ filteredTargets.length }}</strong><span v-if="filteredTargets.length !== targets.length" style="color:var(--text-muted)">/{{ targets.length }}</span></span>
+    <span>正常 <strong class="text-success">{{ goodCount }}</strong></span>
+    <span>告警 <strong class="text-warning">{{ warnCount }}</strong></span>
+    <span>异常 <strong class="text-danger">{{ badCount }}</strong></span>
+    <span>停用 <strong>{{ disabledCount }}</strong></span>
+    <span class="ms-auto" style="color:var(--text-muted)" v-if="lastRefresh"><i class="bi bi-clock me-1"></i>{{ lastRefresh }}</span>
+  </div>
+
+  <!-- ═══════════════════════ Filter bar ═══════════════════════ -->
+  <div class="filter-bar px-3 py-2 d-flex flex-wrap align-items-center gap-2">
+    <!-- Group filter -->
+    <span style="font-size:12px;color:var(--text-muted);flex-shrink:0">分组</span>
+    <button class="filter-tag" :class="{active: filterGroup===''}" @click="filterGroup=''">全部</button>
+    <button v-for="g in allGroups" :key="g" class="filter-tag" :class="{active: filterGroup===g}" @click="filterGroup=g">{{ g }}</button>
+
+    <span class="ms-2" style="font-size:12px;color:var(--text-muted);flex-shrink:0">标签</span>
+    <button class="filter-tag" :class="{active: filterTag===''}" @click="filterTag=''">全部</button>
+    <button v-for="tg in allTags" :key="tg" class="filter-tag" :class="{active: filterTag===tg}" @click="filterTag=tg">{{ tg }}</button>
+
+    <div class="ms-auto">
+      <input type="text" v-model="filterSearch" class="form-control form-control-sm" placeholder="搜索名称/地址…" style="width:180px" />
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Target cards ═══════════════════════ -->
+  <div class="container-fluid p-4">
+
+    <div v-if="!loading && filteredTargets.length === 0" class="text-center py-5 empty-state">
+      <i class="bi bi-radar fs-1"></i>
+      <p class="mt-3">{{ targets.length===0 ? '暂无监控目标，点击"添加目标"开始' : '没有匹配的监控目标' }}</p>
+    </div>
+
+    <!-- Group sections -->
+    <template v-for="grp in visibleGroups" :key="grp.name">
+      <div v-if="grp.name" class="d-flex align-items-center gap-2 mb-2 mt-1">
+        <span class="fw-semibold" style="font-size:13px">{{ grp.name }}</span>
+        <span style="font-size:11px;color:var(--text-muted)">({{ grp.items.length }})</span>
+        <hr class="flex-grow-1 my-0" style="border-color:var(--border)">
+      </div>
+      <div class="row g-3 mb-3">
+        <div v-for="t in grp.items" :key="t.id" class="col-xxl-2 col-xl-3 col-lg-4 col-md-6">
+          <div class="target-card p-3 h-100" :class="{'disabled-card': !t.enabled}" @click="openDetail(t)">
+
+            <!-- header row -->
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="overflow-hidden me-2">
+                <div class="fw-semibold text-truncate" :title="t.name">{{ t.name }}</div>
+                <div class="text-truncate" style="font-size:12px;color:var(--text-muted)" :title="t.address">{{ t.address }}</div>
+              </div>
+              <div class="d-flex align-items-center gap-2 flex-shrink-0">
+                <div class="status-ring" :class="ringClass(t.id, t.enabled)"></div>
+                <div class="dropdown" @click.stop>
+                  <button class="btn btn-sm btn-link text-secondary p-0" style="line-height:1" data-bs-toggle="dropdown">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark" style="font-size:13px">
+                    <li><a class="dropdown-item" href="#" @click.prevent="openEditModal(t)"><i class="bi bi-pencil me-2"></i>编辑</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="toggleTarget(t)">
+                      <i class="bi me-2" :class="t.enabled ? 'bi-pause-circle' : 'bi-play-circle'"></i>
+                      {{ t.enabled ? '停用' : '启用' }}
+                    </a></li>
+                    <li><hr class="dropdown-divider my-1"></li>
+                    <li><a class="dropdown-item text-danger" href="#" @click.prevent="confirmDelete(t)"><i class="bi bi-trash me-2"></i>删除</a></li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            <!-- tags row -->
+            <div v-if="t.tags" class="d-flex flex-wrap gap-1 mb-2">
+              <span v-for="tag in t.tags.split(',').map(s=>s.trim()).filter(Boolean)" :key="tag" class="tag-chip">{{ tag }}</span>
+            </div>
+
+            <!-- stats row (near-1min label) -->
+            <div class="row g-0 text-center" v-if="t.enabled">
+              <div class="col-4">
+                <div class="stat-label">均值延迟<br><span style="font-size:9px">(近1分钟)</span></div>
+                <div class="stat-val" :class="latencyColor(statuses[t.id]?.avg_latency)">
+                  {{ fmt(statuses[t.id]?.avg_latency, 'ms') }}
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-label">丢包率<br><span style="font-size:9px">(近1分钟)</span></div>
+                <div class="stat-val" :class="lossColor(statuses[t.id]?.loss_rate)">
+                  {{ statuses[t.id] != null ? statuses[t.id].loss_rate + '%' : '-' }}
+                </div>
+              </div>
+              <div class="col-4">
+                <div class="stat-label">样本/分钟</div>
+                <div class="stat-val text-secondary">{{ statuses[t.id]?.total ?? '-' }}</div>
+              </div>
+            </div>
+            <div v-else class="text-center py-1" style="font-size:12px;color:var(--text-muted)">已停用</div>
+
+            <!-- 5-second packet bar -->
+            <div v-if="t.enabled" class="packet-bar mt-2">
+              <div v-for="(seg, i) in packetBar(t.id)" :key="i"
+                class="seg" :class="seg" :title="seg==='seg-ok'?'正常':seg==='seg-warn'?'告警':seg==='seg-bad'?'异常':'无数据'">
+              </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mt-2">
+              <span v-if="t.group_name" class="group-badge">{{ t.group_name }}</span>
+              <span v-else></span>
+              <span class="ping-interval-badge">{{ t.interval_ms }}ms/次</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+  </div>
+
+  <!-- ═══════════════════════ Detail Modal ═══════════════════════ -->
+  <div class="modal fade" id="modalDetail" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content" v-if="sel">
+        <div class="modal-header py-2">
+          <div class="d-flex align-items-center gap-3">
+            <div class="status-ring" :class="ringClass(sel.id, sel.enabled)"></div>
+            <div>
+              <h5 class="mb-0 fw-semibold">{{ sel.name }}</h5>
+              <small class="text-secondary">{{ sel.address }}</small>
+            </div>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+
+        <div class="modal-body p-0">
+          <!-- quick stats strip -->
+          <div class="px-4 py-3 border-bottom" style="border-color:var(--border)!important">
+            <div class="d-flex justify-content-end mb-1">
+              <span style="font-size:11px;color:var(--text-muted)">近 1 分钟统计</span>
+            </div>
+            <div class="row g-3 text-center" v-if="detailStatus">
+              <div class="col">
+                <div class="stat-label">均值延迟</div>
+                <div class="fw-bold" :class="latencyColor(detailStatus.avg_latency)">
+                  {{ fmt(detailStatus.avg_latency,'ms') }}
+                </div>
+              </div>
+              <div class="col">
+                <div class="stat-label">最小延迟</div>
+                <div class="fw-bold text-success">{{ fmt(detailStatus.min_latency,'ms') }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">最大延迟</div>
+                <div class="fw-bold text-danger">{{ fmt(detailStatus.max_latency,'ms') }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">丢包次数</div>
+                <div class="fw-bold text-warning">{{ detailStatus.loss != null ? detailStatus.loss : '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">丢包率</div>
+                <div class="fw-bold" :class="lossColor(detailStatus.loss_rate)">{{ detailStatus.loss_rate != null ? detailStatus.loss_rate + '%' : '-' }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">样本/分钟</div>
+                <div class="fw-bold text-secondary">{{ detailStatus.total ?? '-' }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <ul class="nav nav-tabs px-4 mb-0">
+            <li class="nav-item">
+              <a class="nav-link" :class="{active: dTab==='live'}" href="#" @click.prevent="switchTab('live')">
+                <span class="live-dot me-1" :class="sseConnected?'live-dot-on':'live-dot-off'"></span>实时
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{active: dTab==='chart'}" href="#" @click.prevent="switchTab('chart')">
+                <i class="bi bi-graph-up me-1"></i>延迟趋势
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{active: dTab==='loss'}" href="#" @click.prevent="switchTab('loss')">
+                <i class="bi bi-exclamation-triangle me-1"></i>丢包记录
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link" :class="{active: dTab==='hist'}" href="#" @click.prevent="switchTab('hist')">
+                <i class="bi bi-bar-chart-line me-1"></i>历史统计
+              </a>
+            </li>
+          </ul>
+
+          <!-- ────── Live (5-min realtime) tab ────── -->
+          <div v-show="dTab==='live'" class="p-4">
+            <!-- status strip -->
+            <div class="d-flex align-items-center gap-4 mb-3 flex-wrap">
+              <div class="d-flex align-items-center gap-2">
+                <span class="live-dot" :class="sseConnected?'live-dot-on':'live-dot-off'"></span>
+                <span style="font-size:12px;color:#8b949e">{{ sseConnected ? '正常' : '重连中…' }}</span>
+              </div>
+              <template v-if="liveCurrent">
+                <div class="live-stat">
+                  <div class="lbl">最新延迟</div>
+                  <div class="live-val" :class="liveCurrent.is_loss ? 'text-danger' : latencyColor(liveCurrent.latency_ms)">
+                    {{ liveCurrent.is_loss ? '丢包' : (liveCurrent.latency_ms != null ? liveCurrent.latency_ms.toFixed(1)+'ms' : '-') }}
+                  </div>
+                </div>
+                <div class="live-stat">
+                  <div class="lbl">5分钟均值</div>
+                  <div class="live-val" :class="latencyColor(liveAvg)">
+                    {{ liveAvg != null ? liveAvg.toFixed(1)+'ms' : '-' }}
+                  </div>
+                </div>
+                <div class="live-stat">
+                  <div class="lbl">5分钟丢包率</div>
+                  <div class="live-val" :class="lossColor(liveLossRate)">
+                    {{ liveLossRate != null ? liveLossRate.toFixed(1)+'%' : '-' }}
+                  </div>
+                </div>
+                <div class="live-stat">
+                  <div class="lbl">样本(5分钟)</div>
+                  <div class="live-val text-secondary">{{ liveData.length }}</div>
+                </div>
+              </template>
+              <span v-else class="text-secondary" style="font-size:12px">等待第一个探测包…</span>
+            </div>
+            <!-- 5-min rolling chart -->
+            <div id="chartLive"></div>
+          </div>
+
+          <!-- ────── Chart tab ────── -->
+          <div v-show="dTab==='chart'" class="p-4">
+            <!-- range selector -->
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+              <div class="btn-group btn-group-sm">
+                <button v-for="r in presets" :key="r.v"
+                  class="btn btn-outline-secondary range-btn"
+                  :class="{active: rangePreset===r.v && !customActive}"
+                  @click="applyPreset(r.v)">{{ r.l }}</button>
+              </div>
+              <div class="d-flex align-items-center gap-1">
+                <input type="datetime-local" v-model="cStart"
+                  class="form-control form-control-sm" style="width:175px"
+                  @change="customActive=false" />
+                <span class="text-secondary">至</span>
+                <input type="datetime-local" v-model="cEnd"
+                  class="form-control form-control-sm" style="width:175px"
+                  @change="customActive=false" />
+                <button class="btn btn-sm btn-outline-primary range-btn"
+                  :disabled="!cStart||!cEnd"
+                  @click="applyCustom">查询</button>
+              </div>
+              <div class="ms-auto">
+                <button class="btn btn-sm btn-outline-secondary range-btn" @click="fetchChartData">
+                  <i class="bi bi-arrow-clockwise"></i>
+                </button>
+              </div>
+            </div>
+
+            <!-- stats strip for queried range -->
+            <div v-if="chartStats && !chartLoading"
+              class="row g-0 text-center mb-3 rounded"
+              style="background:var(--bg-card2);border:1px solid var(--border);padding:10px 0">
+              <div class="col">
+                <div class="stat-label">均值延迟</div>
+                <div class="fw-bold" :class="latencyColor(chartStats.avg_latency)">
+                  {{ fmt(chartStats.avg_latency, 'ms') }}
+                </div>
+              </div>
+              <div class="col">
+                <div class="stat-label">最小延迟</div>
+                <div class="fw-bold text-success">{{ fmt(chartStats.min_latency, 'ms') }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">最大延迟</div>
+                <div class="fw-bold text-danger">{{ fmt(chartStats.max_latency, 'ms') }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">丢包次数</div>
+                <div class="fw-bold text-warning">{{ chartStats.loss }}</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">丢包率</div>
+                <div class="fw-bold" :class="lossColor(chartStats.loss_rate)">{{ chartStats.loss_rate }}%</div>
+              </div>
+              <div class="col">
+                <div class="stat-label">采样数</div>
+                <div class="fw-bold text-secondary">{{ chartStats.total.toLocaleString() }}</div>
+              </div>
+            </div>
+
+            <div v-if="chartLoading" class="d-flex justify-content-center py-5">
+              <div class="spinner-border text-primary"></div>
+            </div>
+            <div v-show="!chartLoading" id="chartMain"></div>
+            <div v-if="!chartLoading && chartEmpty" class="text-center py-4 text-secondary">
+              <i class="bi bi-inbox fs-3"></i><p class="mt-2">该时段暂无数据</p>
+            </div>
+          </div>
+
+          <!-- ────── Loss events tab ────── -->
+          <div v-show="dTab==='loss'" class="p-4">
+            <div v-if="lossLoading" class="text-center py-4"><div class="spinner-border text-primary"></div></div>
+            <div v-else>
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <small class="text-secondary">共 {{ lossTotal }} 条丢包记录</small>
+              </div>
+              <div class="table-responsive" style="max-height:380px;overflow-y:auto">
+                <table class="table table-dark table-sm table-striped mb-0">
+                  <thead class="sticky-top" style="background:var(--bg-card)">
+                    <tr><th>时间</th><th>状态</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="ev in lossItems" :key="ev.ts">
+                      <td>{{ fmtDt(ev.ts) }}</td>
+                      <td><span class="badge badge-loss">丢包</span></td>
+                    </tr>
+                    <tr v-if="lossItems.length===0">
+                      <td colspan="2" class="text-center text-secondary py-3">暂无记录</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <nav class="mt-3" v-if="lossTotalPages>1">
+                <ul class="pagination pagination-sm justify-content-center mb-0">
+                  <li class="page-item" :class="{disabled:lossPage===1}">
+                    <a class="page-link" href="#" @click.prevent="changeLossPage(lossPage-1)">«</a>
+                  </li>
+                  <li class="page-item disabled">
+                    <span class="page-link">{{ lossPage }}/{{ lossTotalPages }}</span>
+                  </li>
+                  <li class="page-item" :class="{disabled:lossPage>=lossTotalPages}">
+                    <a class="page-link" href="#" @click.prevent="changeLossPage(lossPage+1)">»</a>
+                  </li>
+                </ul>
+              </nav>
+            </div>
+          </div>
+
+          <!-- ────── Historical summary tab ────── -->
+          <div v-show="dTab==='hist'" class="p-4">
+            <!-- filter bar -->
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+              <div class="btn-group btn-group-sm">
+                <button v-for="p in histPresets" :key="p.v"
+                  class="btn btn-outline-secondary range-btn"
+                  :class="{active: histPreset===p.v && !histCustomActive}"
+                  @click="applyHistPreset(p.v)">{{ p.l }}</button>
+              </div>
+              <div class="d-flex align-items-center gap-1">
+                <input type="date" v-model="histStart"
+                  class="form-control form-control-sm" style="width:140px" />
+                <span class="text-secondary">至</span>
+                <input type="date" v-model="histEnd"
+                  class="form-control form-control-sm" style="width:140px" />
+                <button class="btn btn-sm btn-outline-primary range-btn"
+                  :disabled="!histStart||!histEnd"
+                  @click="applyHistCustom">查询</button>
+              </div>
+              <div class="ms-auto d-flex align-items-center gap-2">
+                <button class="btn btn-sm btn-outline-secondary range-btn" @click="fetchHistorySummary" title="刷新">
+                  <i class="bi bi-arrow-clockwise"></i>
+                </button>
+                <div class="d-flex align-items-center gap-1">
+                  <span class="text-secondary" style="font-size:12px;white-space:nowrap">保留最近</span>
+                  <select v-model.number="compressKeepHours" class="form-select form-select-sm" style="width:80px">
+                    <option :value="1">1 小时</option>
+                    <option :value="6">6 小时</option>
+                    <option :value="24">1 天</option>
+                    <option :value="72">3 天</option>
+                    <option :value="168">7 天</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-warning range-btn"
+                    :disabled="compressing"
+                    @click="doManualCompress"
+                    title="将保留时长之外的原始数据压缩为历史统计，压缩后的数据不再显示在实时/延迟趋势图中">
+                    <span class="spinner-border spinner-border-sm me-1" v-if="compressing"></span>
+                    <i class="bi bi-archive me-1" v-else></i>手动压缩
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div v-if="histLoading" class="d-flex justify-content-center py-5">
+              <div class="spinner-border text-primary"></div>
+            </div>
+            <div v-else-if="!historySummary" class="text-center py-5 text-secondary">
+              <i class="bi bi-inbox fs-3"></i>
+              <p class="mt-2">该时段暂无历史统计数据</p>
+            </div>
+            <template v-else>
+              <p class="text-secondary mb-3" style="font-size:12px">
+                统计范围：{{ fmtDt(historySummary.oldest) }} ~ {{ fmtDt(historySummary.newest) }}
+                &nbsp;·&nbsp; 总采样 {{ historySummary.total.toLocaleString() }} 次
+              </p>
+              <div class="row g-3">
+                <div class="col-md-5">
+                  <div id="chartSummary"></div>
+                </div>
+                <div class="col-md-7">
+                  <table class="table table-dark table-sm">
+                    <thead><tr><th>延迟区间</th><th>次数</th><th>占比</th></tr></thead>
+                    <tbody>
+                      <tr v-for="(v, k) in historySummary.buckets" :key="k">
+                        <td>{{ k }}</td>
+                        <td>{{ v.count.toLocaleString() }}</td>
+                        <td>
+                          <div class="d-flex align-items-center gap-2">
+                            <div class="progress flex-grow-1" style="height:5px">
+                              <div class="progress-bar" :class="k==='丢包'?'bg-danger':'bg-primary'"
+                                :style="{width: v.pct+'%'}"></div>
+                            </div>
+                            <span style="min-width:42px;font-size:12px;color:#8b949e">{{ v.pct }}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </template>
+          </div>
+        </div><!-- /modal-body -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Add / Edit Modal ═══════════════════════ -->
+  <div class="modal fade" id="modalEdit" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:440px">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title">{{ editMode ? '编辑监控目标' : '添加监控目标' }}</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-secondary">名称 <span class="text-danger">*</span></label>
+            <input class="form-control" v-model="form.name" placeholder="如: 生产服务器" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">地址 (IP / 域名) <span class="text-danger">*</span></label>
+            <input class="form-control" v-model="form.address" placeholder="如: 8.8.8.8 或 example.com" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">检测间隔 (ms)</label>
+            <input class="form-control" type="number" v-model.number="form.interval_ms" min="500" max="60000" step="500" />
+            <div class="form-text text-secondary">最小 500ms，建议 1000ms（每秒 1 次）</div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">分组</label>
+            <input class="form-control" v-model="form.group_name" placeholder="如: 核心网络 / 业务系统" list="groupSuggestions" />
+            <datalist id="groupSuggestions">
+              <option v-for="g in allGroups" :key="g" :value="g" />
+            </datalist>
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">标签</label>
+            <input class="form-control" v-model="form.tags" placeholder="多个标签用逗号分隔，如: 生产,核心" />
+            <div class="form-text text-secondary">多个标签用英文逗号分隔</div>
+          </div>
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="chkEnabled" v-model="form.enabled" />
+            <label class="form-check-label text-secondary" for="chkEnabled">启用监控</label>
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-sm btn-primary" @click="saveTarget" :disabled="saving">
+            <span class="spinner-border spinner-border-sm me-1" v-if="saving"></span>
+            {{ editMode ? '保存' : '添加' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Delete confirm Modal ═══════════════════════ -->
+  <div class="modal fade" id="modalDelete" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:380px">
+      <div class="modal-content">
+        <div class="modal-header py-2"><h6 class="modal-title text-danger">确认删除</h6>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body text-secondary" v-if="delTarget">
+          删除 <strong class="text-white">{{ delTarget.name }}</strong>？所有历史数据将被清除，此操作不可撤销。
+        </div>
+        <div class="modal-footer py-2">
+          <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-sm btn-danger" @click="doDelete" :disabled="saving">
+            <span class="spinner-border spinner-border-sm me-1" v-if="saving"></span>确认删除
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Toasts ═══════════════════════ -->
+  <div class="toast-container position-fixed bottom-0 end-0 p-3" style="z-index:9999">
+    <div v-for="t in toasts" :key="t.id" class="toast show mb-2" role="alert">
+      <div class="toast-header border-0 py-1">
+        <i class="bi me-2 fs-6" :class="t.icon"></i>
+        <strong class="me-auto">{{ t.title }}</strong>
+        <button type="button" class="btn-close btn-close-white btn-sm" @click="rmToast(t.id)"></button>
+      </div>
+      <div class="toast-body py-1 text-secondary" style="font-size:13px">{{ t.msg }}</div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════ Change Password Modal ═══════════════════════ -->
+  <div class="modal fade" id="modalChangePw" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered" style="max-width:400px">
+      <div class="modal-content">
+        <div class="modal-header py-2">
+          <h5 class="modal-title"><i class="bi bi-key me-2"></i>修改密码</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label text-secondary">原密码</label>
+            <input type="password" class="form-control" v-model="pwForm.old" placeholder="当前密码" autocomplete="current-password" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label text-secondary">新密码</label>
+            <input type="password" class="form-control" v-model="pwForm.new1" placeholder="新密码（至少6位）" autocomplete="new-password" />
+          </div>
+          <div class="mb-0">
+            <label class="form-label text-secondary">确认新密码</label>
+            <input type="password" class="form-control" v-model="pwForm.new2" placeholder="再次输入新密码" autocomplete="new-password" />
+          </div>
+        </div>
+        <div class="modal-footer py-2">
+          <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">取消</button>
+          <button class="btn btn-sm btn-primary" @click="savePassword" :disabled="pwSaving">
+            <span class="spinner-border spinner-border-sm me-1" v-if="pwSaving"></span>保存
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /#app -->
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vue@3.4.27/dist/vue.global.prod.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+<script>
+/* ── Theme init (before Vue) ── */
+(function() {
+  const saved = localStorage.getItem('nm-theme') || 'dark';
+  document.getElementById('htmlRoot').setAttribute('data-bs-theme', saved);
+})();
+
+/* ── Login overlay logic ── */
+function showLoginOverlay() {
+  document.getElementById('loginOverlay').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('loginPwInput').value = '';
+  document.getElementById('loginError').style.display = 'none';
+  setTimeout(() => document.getElementById('loginPwInput').focus(), 50);
+}
+function hideLoginOverlay() {
+  document.getElementById('loginOverlay').style.display = 'none';
+  document.getElementById('app').style.display = '';
+}
+async function doLogin() {
+  const pw = document.getElementById('loginPwInput').value;
+  if (!pw) return;
+  const spinner = document.getElementById('loginSpinner');
+  const errEl   = document.getElementById('loginError');
+  spinner.style.display = 'inline-block';
+  errEl.style.display   = 'none';
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pw }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      errEl.textContent = d.detail || '登录失败';
+      errEl.style.display = 'block';
+      return;
+    }
+    const { token } = await res.json();
+    localStorage.setItem('nm-token', token);
+    hideLoginOverlay();
+  } catch (e) {
+    errEl.textContent = '网络错误，请重试';
+    errEl.style.display = 'block';
+  } finally {
+    spinner.style.display = 'none';
+  }
+}
+
+/* ── Auth check on page load ── */
+(async function checkAuth() {
+  const token = localStorage.getItem('nm-token');
+  if (!token) { showLoginOverlay(); return; }
+  try {
+    const res = await fetch('/api/auth/me', {
+      headers: { 'Authorization': 'Bearer ' + token }
+    });
+    if (!res.ok) { showLoginOverlay(); return; }
+    hideLoginOverlay();
+  } catch { showLoginOverlay(); }
+})();
+</script>
+<script>
+const { createApp, ref, computed, onMounted, onUnmounted, nextTick, watch } = Vue;
+
+createApp({
+  setup() {
+    /* ─────────────── theme ─────────────── */
+    const isDark = ref(document.getElementById('htmlRoot').getAttribute('data-bs-theme') === 'dark');
+    function toggleTheme() {
+      isDark.value = !isDark.value;
+      const t = isDark.value ? 'dark' : 'light';
+      document.getElementById('htmlRoot').setAttribute('data-bs-theme', t);
+      localStorage.setItem('nm-theme', t);
+      // Dispose all charts so they reinit with correct theme next render
+      chartLive?.dispose();    chartLive    = null;
+      chartMain?.dispose();    chartMain    = null;
+      chartSummary?.dispose(); chartSummary = null;
+      // Re-render immediately if the modal is open
+      nextTick(() => {
+        if (dTab.value === 'live'  && sel.value) renderLiveChart();
+        if (dTab.value === 'chart' && lastChartData?.length) renderMainChart(lastChartData);
+        if (dTab.value === 'hist'  && historySummary.value) renderSummaryChart(historySummary.value);
+      });
+    }
+
+    /* ─────────────── change-password ─────────────── */
+    const pwForm  = ref({ old: '', new1: '', new2: '' });
+    const pwSaving = ref(false);
+    let bsChangePw = null;
+    function openChangePwModal() {
+      pwForm.value = { old: '', new1: '', new2: '' };
+      bsChangePw?.show();
+    }
+    async function savePassword() {
+      if (!pwForm.value.old || !pwForm.value.new1) { toast('提示','请填写所有字段','info'); return; }
+      if (pwForm.value.new1 !== pwForm.value.new2) { toast('提示','两次输入的新密码不一致','info'); return; }
+      if (pwForm.value.new1.length < 6) { toast('提示','新密码至少 6 位','info'); return; }
+      pwSaving.value = true;
+      try {
+        await api('PUT', '/auth/password', { old_password: pwForm.value.old, new_password: pwForm.value.new1 });
+        toast('成功','密码已修改，请重新登录','success');
+        bsChangePw?.hide();
+        // Password change invalidates session – force re-login
+        setTimeout(() => { localStorage.removeItem('nm-token'); showLoginOverlay(); }, 1500);
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        pwSaving.value = false;
+      }
+    }
+    async function doLogout() {
+      try { await api('POST', '/auth/logout'); } catch {}
+      localStorage.removeItem('nm-token');
+      showLoginOverlay();
+    }
+
+    /* ─────────────── state ─────────────── */
+    const targets     = ref([]);
+    const statuses    = ref({});   // { [id]: {total,loss,loss_rate,avg/min/max_latency} }
+    const recentPkts  = ref({});   // { [target_id]: [{ts,latency_ms,is_loss},...] } last 5s
+    const loading     = ref(false);
+    const lastRefresh = ref('');
+
+    // filter state
+    const filterGroup  = ref('');
+    const filterTag    = ref('');
+    const filterSearch = ref('');
+
+    // detail modal
+    const sel         = ref(null);
+    const detailStatus= ref(null);
+    const dTab        = ref('live');
+
+    // chart
+    const chartLoading = ref(false);
+    const chartEmpty   = ref(false);
+    const chartStats   = ref(null);  // aggregated stats for the queried range
+    const presets = [{l:'1H',v:'1H'},{l:'6H',v:'6H'},{l:'24H',v:'24H'},{l:'3D',v:'3D'},{l:'7D',v:'7D'}];
+    const rangePreset  = ref('1H');
+    const customActive = ref(false);
+    const cStart = ref('');
+    const cEnd   = ref('');
+    let chartMain    = null;
+    let chartSummary = null;
+
+    // live / SSE
+    const liveData     = ref([]);   // [{ts, latency_ms, is_loss}, …] rolling 5-min buffer
+    const liveCurrent  = ref(null); // latest single result
+    const sseConnected = ref(false);
+    let evtSource       = null;
+    let chartLive       = null;
+    let livePending     = false;    // rAF batching flag
+    const liveAvg = computed(() => {
+      const valid = liveData.value.filter(d => !d.is_loss && d.latency_ms != null);
+      if (!valid.length) return null;
+      return valid.reduce((s, d) => s + d.latency_ms, 0) / valid.length;
+    });
+    const liveLossRate = computed(() => {
+      if (!liveData.value.length) return null;
+      return liveData.value.filter(d => d.is_loss).length / liveData.value.length * 100;
+    });
+
+    // loss events
+    const lossLoading = ref(false);
+    const lossItems   = ref([]);
+    const lossTotal   = ref(0);
+    const lossPage    = ref(1);
+    const LOSS_LIMIT  = 50;
+    const lossTotalPages = computed(() => Math.ceil(lossTotal.value / LOSS_LIMIT) || 1);
+
+    // history summary
+    const historySummary = ref(null);
+    const histLoading    = ref(false);
+    const histPresets    = [{l:'全部',v:'all'},{l:'近7天',v:'7D'},{l:'近30天',v:'30D'},{l:'近90天',v:'90D'}];
+    const histPreset     = ref('all');
+    const histCustomActive = ref(false);
+    const histStart      = ref('');
+    const histEnd        = ref('');
+    const compressKeepHours = ref(1);
+    const compressing    = ref(false);
+
+    // edit/add
+    const editMode = ref(false);
+    const form = ref({ id: null, name: '', address: '', interval_ms: 1000, enabled: true, group_name: '', tags: '' });
+    const saving = ref(false);
+    const delTarget = ref(null);
+
+    // toasts
+    const toasts = ref([]);
+    let toastSeq = 0;
+
+    /* ─────────────── computed ─────────────── */
+    const allGroups = computed(() => {
+      const s = new Set(targets.value.map(t => t.group_name).filter(Boolean));
+      return [...s].sort();
+    });
+    const allTags = computed(() => {
+      const s = new Set();
+      targets.value.forEach(t => (t.tags || '').split(',').map(x => x.trim()).filter(Boolean).forEach(tg => s.add(tg)));
+      return [...s].sort();
+    });
+    const filteredTargets = computed(() => {
+      let list = targets.value;
+      if (filterGroup.value) list = list.filter(t => t.group_name === filterGroup.value);
+      if (filterTag.value)   list = list.filter(t => (t.tags||'').split(',').map(x=>x.trim()).includes(filterTag.value));
+      if (filterSearch.value) {
+        const q = filterSearch.value.toLowerCase();
+        list = list.filter(t => t.name.toLowerCase().includes(q) || t.address.toLowerCase().includes(q));
+      }
+      return list;
+    });
+    const visibleGroups = computed(() => {
+      const map = new Map();
+      filteredTargets.value.forEach(t => {
+        const g = t.group_name || '';
+        if (!map.has(g)) map.set(g, []);
+        map.get(g).push(t);
+      });
+      // sort: named groups first (alphabetically), then ungrouped
+      const named = [...map.entries()].filter(([k]) => k).sort((a,b)=>a[0].localeCompare(b[0]));
+      const ungrouped = [...map.entries()].filter(([k]) => !k);
+      return [...named, ...ungrouped].map(([name, items]) => ({ name, items }));
+    });
+
+    const goodCount = computed(() =>
+      targets.value.filter(t => {
+        if (!t.enabled) return false;
+        const s = statuses.value[t.id];
+        return s && s.loss_rate < 1 && (s.avg_latency == null || s.avg_latency < 100);
+      }).length);
+    const warnCount = computed(() =>
+      targets.value.filter(t => {
+        if (!t.enabled) return false;
+        const s = statuses.value[t.id];
+        return s && (
+          (s.loss_rate >= 1 && s.loss_rate < 5) ||
+          (s.avg_latency != null && s.avg_latency >= 100 && s.avg_latency < 200)
+        );
+      }).length);
+    const badCount = computed(() =>
+      targets.value.filter(t => {
+        if (!t.enabled) return false;
+        const s = statuses.value[t.id];
+        return !s || s.loss_rate >= 5 || (s.avg_latency != null && s.avg_latency >= 200);
+      }).length);
+    const disabledCount = computed(() =>
+      targets.value.filter(t => !t.enabled).length);
+
+    /* ─────────────── helpers ─────────────── */
+    function ringClass(id, enabled) {
+      if (!enabled) return 'ring-off';
+      const s = statuses.value[id];
+      if (!s || s.total === 0) return 'ring-unknown';
+      if (s.loss_rate >= 5 || (s.avg_latency != null && s.avg_latency >= 200)) return 'ring-bad';
+      if (s.loss_rate >= 1 || (s.avg_latency != null && s.avg_latency >= 100)) return 'ring-warn';
+      return 'ring-good';
+    }
+    function latencyColor(ms) {
+      if (ms == null) return 'text-secondary';
+      if (ms < 50)  return 'text-success';
+      if (ms < 100) return 'text-warning';
+      return 'text-danger';
+    }
+    function lossColor(pct) {
+      if (pct == null) return 'text-secondary';
+      if (pct < 1)  return 'text-success';
+      if (pct < 5)  return 'text-warning';
+      return 'text-danger';
+    }
+    function fmt(v, unit) { return v != null ? v + unit : '-'; }
+    function fmtDt(ts) {
+      if (!ts) return '-';
+      return new Date(ts * 1000).toLocaleString('zh-CN', {
+        month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', second:'2-digit'
+      });
+    }
+    function localDtStr(ts) {
+      const d = new Date(ts * 1000);
+      const pad = n => String(n).padStart(2,'0');
+      return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
+    function toast(title, msg, type='info') {
+      const icons = { success:'bi-check-circle text-success', error:'bi-x-circle text-danger', info:'bi-info-circle text-info' };
+      const id = ++toastSeq;
+      toasts.value.push({ id, title, msg, icon: icons[type] || icons.info });
+      setTimeout(() => rmToast(id), 4000);
+    }
+    function rmToast(id) { toasts.value = toasts.value.filter(t => t.id !== id); }
+
+    async function api(method, path, body) {
+      const token = localStorage.getItem('nm-token') || '';
+      const opts = { method, headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+      }};
+      if (body != null) opts.body = JSON.stringify(body);
+      const res = await fetch('/api' + path, opts);
+      if (res.status === 401) {
+        localStorage.removeItem('nm-token');
+        showLoginOverlay();
+        throw new Error('请重新登录');
+      }
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}));
+        throw new Error(e.detail || res.statusText);
+      }
+      return res.json();
+    }
+
+    /* ─────────────── packet bar ─────────────── */
+    function packetBar(targetId) {
+      const BAR_SLOTS = 20;  // 20 seconds
+      const pkts = recentPkts.value[targetId] || [];
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      // Build one slot per second, from (now-19) to now
+      return Array.from({ length: BAR_SLOTS }, (_, i) => {
+        const sec = nowSec - (BAR_SLOTS - 1 - i);
+        // find all packets in this second
+        const inSec = pkts.filter(p => p.ts === sec);
+        if (!inSec.length) return 'seg-none';
+        // worst-case: loss > high latency > warn > ok
+        if (inSec.some(p => p.is_loss)) return 'seg-bad';
+        const maxMs = Math.max(...inSec.map(p => p.latency_ms ?? 0));
+        if (maxMs >= 200) return 'seg-bad';
+        if (maxMs >= 100) return 'seg-warn';
+        return 'seg-ok';
+      });
+    }
+
+    async function fetchAllRecent() {
+      try {
+        const data = await api('GET', '/metrics/all-recent?seconds=20');
+        const updated = {};
+        for (const [k, v] of Object.entries(data)) updated[parseInt(k)] = v;
+        recentPkts.value = updated;
+      } catch {}
+    }
+
+    /* ─────────────── data fetching ─────────────── */
+    async function fetchAll() {
+      loading.value = true;
+      try {
+        targets.value = await api('GET', '/targets');
+        await fetchAllStatuses();
+        lastRefresh.value = new Date().toLocaleTimeString('zh-CN');
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        loading.value = false;
+      }
+    }
+
+    async function fetchAllStatuses() {
+      try {
+        const data = await api('GET', '/metrics/all-status');
+        // data keys are string ids
+        const updated = { ...statuses.value };
+        for (const [k, v] of Object.entries(data)) {
+          updated[parseInt(k)] = v;
+        }
+        statuses.value = updated;
+        lastRefresh.value = new Date().toLocaleTimeString('zh-CN');
+      } catch {}
+    }
+
+    /* ─────────────── detail modal ─────────────── */
+    let bsDetail = null;
+
+    async function openDetail(target) {
+      sel.value = target;
+      detailStatus.value = statuses.value[target.id] || null;
+      dTab.value = 'live';
+      lossItems.value = [];
+      lossTotal.value = 0;
+      lossPage.value  = 1;
+      historySummary.value  = null;
+      histPreset.value      = 'all';
+      histCustomActive.value = false;
+      histStart.value       = '';
+      histEnd.value         = '';
+      customActive.value    = false;
+      chartEmpty.value     = false;
+      chartStats.value     = null;
+      liveData.value    = [];
+      liveCurrent.value = null;
+      lastChartData     = null;
+
+      // default historical range: last 1h
+      rangePreset.value = '1H';
+      const now = Math.floor(Date.now() / 1000);
+      cEnd.value   = localDtStr(now);
+      cStart.value = localDtStr(now - 3600);
+
+      bsDetail.show();
+      // charts rendered in shown.bs.modal handler
+      fetchHistorySummary();
+    }
+
+    async function refreshDetailStatus() {
+      if (!sel.value) return;
+      try {
+        detailStatus.value = await api('GET', `/metrics/${sel.value.id}/status`);
+      } catch {}
+    }
+
+    /* ─────────────── SSE / live chart ─────────────── */
+
+    function connectSSE(targetId) {
+      disconnectSSE();
+      sseConnected.value = false;
+      const token = localStorage.getItem('nm-token') || '';
+      const es = new EventSource(`/api/metrics/${targetId}/stream?token=${encodeURIComponent(token)}`);
+      evtSource = es;
+      es.onopen  = () => { sseConnected.value = true; };
+      es.onmessage = handleSSEMessage;
+      es.onerror = () => {
+        sseConnected.value = false;
+        es.close();
+        // Reconnect only if this modal is still open for the same target
+        if (sel.value && sel.value.id === targetId) {
+          setTimeout(() => connectSSE(targetId), 3000);
+        }
+      };
+    }
+
+    function disconnectSSE() {
+      if (evtSource) { evtSource.close(); evtSource = null; }
+      sseConnected.value = false;
+    }
+
+    function handleSSEMessage(e) {
+      if (!e.data || e.data.startsWith(':')) return;  // keepalive comment
+      let d;
+      try { d = JSON.parse(e.data); } catch { return; }
+      if (d.heartbeat) return;
+
+      liveCurrent.value = d;
+
+      // Ring-buffer: keep up to 320 entries (~5 min at 1 Hz) without Array.filter
+      liveData.value.push(d);
+      while (liveData.value.length > 320) {
+        liveData.value.shift();
+      }
+
+      // Batch chart updates via rAF so we never render faster than screen refresh
+      if (!livePending) {
+        livePending = true;
+        requestAnimationFrame(() => {
+          if (chartLive) updateLiveChart();
+          livePending = false;
+        });
+      }
+    }
+
+    async function loadLiveChart() {
+      if (!sel.value) return;
+      try {
+        const rows = await api('GET', `/metrics/${sel.value.id}/recent?seconds=300`);
+        liveData.value = rows;
+      } catch { /* non-fatal – chart starts empty */ }
+      await nextTick();
+      renderLiveChart();
+      connectSSE(sel.value.id);
+    }
+
+    function renderLiveChart() {
+      const el = document.getElementById('chartLive');
+      if (!el) return;
+      if (chartLive) { chartLive.dispose(); chartLive = null; }
+      chartLive = echarts.init(el, isDark.value ? 'dark' : 'light');
+
+      const now = Date.now();
+      const latencyData = liveData.value.map(d => [d.ts * 1000, d.is_loss ? null : d.latency_ms]);
+      const lossData    = liveData.value.filter(d => d.is_loss).map(d => [d.ts * 1000, 0]);
+
+      chartLive.setOption({
+        backgroundColor: 'transparent',
+        animation: false,
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'line' },
+          backgroundColor: '#1c2128', borderColor: '#30363d',
+          textStyle: { color: '#e6edf3', fontSize: 12 },
+          formatter(params) {
+            const ts = new Date(params[0].axisValue).toLocaleTimeString('zh-CN');
+            let s = `<b>${ts}</b><br/>`;
+            params.forEach(p => {
+              const v = p.value[1];
+              s += `<span style="color:${p.color}">●</span> ${p.seriesName}: <b>${v != null ? v.toFixed(1) + 'ms' : '丢包'}</b><br/>`;
+            });
+            return s;
+          }
+        },
+        grid: { left: 55, right: 15, top: 20, bottom: 30 },
+        xAxis: {
+          type: 'time',
+          min: now - 300_000,
+          max: now,
+          axisLabel: {
+            color: '#8b949e', fontSize: 11,
+            formatter(v) {
+              const d = new Date(v);
+              return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:${String(d.getSeconds()).padStart(2,'0')}`;
+            }
+          },
+          splitLine: { lineStyle: { color: '#21262d' } },
+          axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: {
+          type: 'value', name: 'ms', min: 0, nameTextStyle: { color: '#8b949e', fontSize: 11 },
+          axisLabel: { color: '#8b949e', fontSize: 11 },
+          splitLine: { lineStyle: { color: '#21262d' } },
+          axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        series: [
+          {
+            name: '延迟', type: 'line',
+            data: latencyData,
+            smooth: false, showSymbol: false, connectNulls: false,
+            lineStyle: { color: '#58a6ff', width: 1.5 },
+            itemStyle: { color: '#58a6ff' },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                { offset: 0, color: 'rgba(88,166,255,.2)' },
+                { offset: 1, color: 'rgba(88,166,255,.02)' }
+              ])
+            }
+          },
+          {
+            name: '丢包', type: 'scatter',
+            data: lossData,
+            symbolSize: 7,
+            itemStyle: { color: '#f85149' },
+            tooltip: { formatter: '丢包' }
+          }
+        ]
+      }, true);
+    }
+
+    function updateLiveChart() {
+      if (!chartLive) return;
+      const now = Date.now();
+      const latencyData = liveData.value.map(d => [d.ts * 1000, d.is_loss ? null : d.latency_ms]);
+      const lossData    = liveData.value.filter(d => d.is_loss).map(d => [d.ts * 1000, 0]);
+      chartLive.setOption({
+        xAxis:  { min: now - 300_000, max: now },
+        series: [{ data: latencyData }, { data: lossData }]
+      });
+    }
+
+    /* ─────────────── chart ─────────────── */
+    let lastChartData = null;   // cached so switchTab can render without re-fetching
+
+    function rangeSeconds(preset) {
+      return { '1H':3600, '6H':21600, '24H':86400, '3D':259200, '7D':604800 }[preset] || 3600;
+    }
+
+    function applyPreset(v) {
+      rangePreset.value = v;
+      customActive.value = false;
+      const now = Math.floor(Date.now() / 1000);
+      cEnd.value   = localDtStr(now);
+      cStart.value = localDtStr(now - rangeSeconds(v));
+      fetchChartData();
+    }
+
+    function applyCustom() {
+      if (!cStart.value || !cEnd.value) return;
+      customActive.value = true;
+      fetchChartData();
+    }
+
+    async function fetchChartData() {
+      if (!sel.value) return;
+      chartLoading.value = true;
+      chartEmpty.value   = false;
+      let fetched = null;
+      try {
+        const s = Math.floor(new Date(cStart.value).getTime() / 1000);
+        const e = Math.floor(new Date(cEnd.value).getTime()   / 1000);
+        fetched = await api('GET', `/metrics/${sel.value.id}/chart?start=${s}&end=${e}`);
+        lastChartData    = fetched;
+        chartEmpty.value = fetched.length === 0;
+        // Aggregate stats for the queried range
+        if (fetched.length > 0) {
+          const totalSamples = fetched.reduce((a, d) => a + (d.total || 0), 0);
+          const totalLoss    = fetched.reduce((a, d) => a + (d.loss  || 0), 0);
+          const validBuckets = fetched.filter(d => d.avg != null);
+          // Weighted average: sum(avg * (total - loss)) / sum(total - loss)
+          const wSum = validBuckets.reduce((a, d) => a + d.avg * (d.total - d.loss), 0);
+          const wCnt = validBuckets.reduce((a, d) => a + (d.total - d.loss), 0);
+          chartStats.value = {
+            avg_latency: wCnt > 0 ? +(wSum / wCnt).toFixed(2) : null,
+            min_latency: validBuckets.length ? +Math.min(...validBuckets.map(d => d.min)).toFixed(2) : null,
+            max_latency: validBuckets.length ? +Math.max(...validBuckets.map(d => d.max)).toFixed(2) : null,
+            loss:        totalLoss,
+            loss_rate:   totalSamples > 0 ? +(totalLoss / totalSamples * 100).toFixed(2) : 0,
+            total:       totalSamples,
+          };
+        } else {
+          chartStats.value = null;
+        }
+      } catch (err) {
+        toast('错误', '加载图表失败: ' + err.message, 'error');
+      } finally {
+        // Must set false FIRST so v-show="!chartLoading" makes #chartMain visible
+        chartLoading.value = false;
+      }
+      // Render only AFTER chartLoading=false; otherwise #chartMain is still display:none
+      if (fetched && fetched.length > 0 && dTab.value === 'chart') {
+        await nextTick();   // let Vue apply v-show before ECharts measures the element
+        renderMainChart(fetched);
+      }
+    }
+
+    function renderMainChart(data) {
+      const el = document.getElementById('chartMain');
+      if (!el) return;
+      if (!chartMain) chartMain = echarts.init(el, isDark.value ? 'dark' : 'light');
+
+      const avgArr  = data.map(d => [d.ts * 1000, d.avg]);
+      const minArr  = data.map(d => [d.ts * 1000, d.min]);
+      const maxArr  = data.map(d => [d.ts * 1000, d.max]);
+      const lossArr = data.map(d => [
+        d.ts * 1000,
+        d.total > 0 ? +(d.loss / d.total * 100).toFixed(1) : 0
+      ]);
+
+      chartMain.setOption({
+        backgroundColor: 'transparent',
+        animation: false,
+        tooltip: {
+          trigger: 'axis',
+          axisPointer: { type: 'cross', label: { backgroundColor: '#1f2937' } },
+          backgroundColor: '#1c2128',
+          borderColor: '#30363d',
+          textStyle: { color: '#e6edf3', fontSize: 12 },
+          formatter(params) {
+            const ts = new Date(params[0].axisValue).toLocaleString('zh-CN');
+            let s = `<div style="margin-bottom:4px;font-weight:600">${ts}</div>`;
+            params.forEach(p => {
+              const v = p.value[1];
+              const unit = p.seriesName === '丢包率' ? '%' : 'ms';
+              s += `<span style="color:${p.color}">●</span> ${p.seriesName}: <b>${v != null ? v + unit : '-'}</b><br/>`;
+            });
+            return s;
+          }
+        },
+        legend: {
+          data: ['最小', '平均', '最大', '丢包率'],
+          textStyle: { color: '#8b949e' },
+          top: 0
+        },
+        grid: { left: 60, right: 60, top: 40, bottom: 60 },
+        xAxis: {
+          type: 'time',
+          axisLabel: {
+            color: '#8b949e', fontSize: 11,
+            formatter(v) {
+              const d = new Date(v);
+              return `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+            }
+          },
+          splitLine: { lineStyle: { color: '#21262d' } },
+          axisLine: { lineStyle: { color: '#30363d' } }
+        },
+        yAxis: [
+          {
+            name: 'ms', nameTextStyle: { color: '#8b949e', fontSize: 11 },
+            type: 'value', min: 0,
+            axisLabel: { color: '#8b949e', fontSize: 11 },
+            splitLine: { lineStyle: { color: '#21262d' } },
+            axisLine: { lineStyle: { color: '#30363d' } }
+          },
+          {
+            name: '丢包%', nameTextStyle: { color: '#8b949e', fontSize: 11 },
+            type: 'value', min: 0, max: 100,
+            axisLabel: { color: '#8b949e', fontSize: 11, formatter: v => v + '%' },
+            splitLine: { show: false },
+            axisLine: { lineStyle: { color: '#30363d' } }
+          }
+        ],
+        dataZoom: [
+          { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+          { type: 'slider', xAxisIndex: 0, height: 18, bottom: 6,
+            textStyle: { color: '#8b949e' }, borderColor: '#30363d',
+            fillerColor: 'rgba(88,166,255,.1)', handleStyle: { color: '#58a6ff' },
+            dataBackground: { areaStyle: { color: '#21262d' }, lineStyle: { color: '#30363d' } }
+          }
+        ],
+        series: [
+          {
+            name: '最小', type: 'line', yAxisIndex: 0,
+            data: minArr, smooth: true, showSymbol: false,
+            lineStyle: { color: '#3fb950', width: 1, opacity: .6 },
+            itemStyle: { color: '#3fb950' }
+          },
+          {
+            name: '平均', type: 'line', yAxisIndex: 0,
+            data: avgArr, smooth: true, showSymbol: false,
+            lineStyle: { color: '#58a6ff', width: 2 },
+            itemStyle: { color: '#58a6ff' },
+            areaStyle: {
+              color: new echarts.graphic.LinearGradient(0,0,0,1,[
+                {offset:0, color:'rgba(88,166,255,.25)'},
+                {offset:1, color:'rgba(88,166,255,.02)'}
+              ])
+            }
+          },
+          {
+            name: '最大', type: 'line', yAxisIndex: 0,
+            data: maxArr, smooth: true, showSymbol: false,
+            lineStyle: { color: '#d29922', width: 1, opacity: .6 },
+            itemStyle: { color: '#d29922' }
+          },
+          {
+            name: '丢包率', type: 'line', yAxisIndex: 1,
+            data: lossArr, smooth: false, showSymbol: false,
+            lineStyle: { color: '#f85149', width: 1.5 },
+            itemStyle: { color: '#f85149' },
+            areaStyle: { color: 'rgba(248,81,73,.12)' }
+          }
+        ]
+      }, true);
+    }
+
+    /* ─────────────── loss events ─────────────── */
+    async function fetchLossEvents() {
+      if (!sel.value) return;
+      lossLoading.value = true;
+      try {
+        const r = await api('GET',
+          `/metrics/${sel.value.id}/loss-events?page=${lossPage.value}&limit=${LOSS_LIMIT}`);
+        lossItems.value = r.items;
+        lossTotal.value = r.total;
+      } catch (e) {
+        toast('错误', '加载丢包记录失败', 'error');
+      } finally {
+        lossLoading.value = false;
+      }
+    }
+
+    async function changeLossPage(p) {
+      if (p < 1 || p > lossTotalPages.value) return;
+      lossPage.value = p;
+      await fetchLossEvents();
+    }
+
+    function switchTab(tab) {
+      dTab.value = tab;
+      if (tab === 'chart') {
+        nextTick(() => {
+          if (chartEmpty.value) return;
+          if (chartLoading.value) return; // fetchChartData will render when done
+          if (chartMain) {
+            chartMain.resize();
+          } else if (lastChartData && lastChartData.length > 0) {
+            renderMainChart(lastChartData);
+          } else {
+            fetchChartData();
+          }
+        });
+      }
+      if (tab === 'loss' && lossItems.value.length === 0) fetchLossEvents();
+      if (tab === 'hist') {
+        nextTick(() => {
+          if (historySummary.value) {
+            chartSummary ? chartSummary.resize() : renderSummaryChart(historySummary.value);
+          }
+        });
+      }
+      if (tab === 'live') {
+        nextTick(() => {
+          if (!chartLive) renderLiveChart();
+          else { chartLive.resize(); updateLiveChart(); }
+        });
+      }
+    }
+
+    /* ─────────────── history summary ─────────────── */
+    function histRangeSeconds(preset) {
+      return { '7D': 604800, '30D': 2592000, '90D': 7776000 }[preset];
+    }
+
+    function applyHistPreset(v) {
+      histPreset.value = v;
+      histCustomActive.value = false;
+      if (v !== 'all') {
+        const now = new Date();
+        const from = new Date(now - histRangeSeconds(v) * 1000);
+        histEnd.value   = now.toISOString().slice(0, 10);
+        histStart.value = from.toISOString().slice(0, 10);
+      } else {
+        histStart.value = '';
+        histEnd.value   = '';
+      }
+      fetchHistorySummary();
+    }
+
+    function applyHistCustom() {
+      if (!histStart.value || !histEnd.value) return;
+      histCustomActive.value = true;
+      histPreset.value = '';
+      fetchHistorySummary();
+    }
+
+    async function fetchHistorySummary() {
+      if (!sel.value) return;
+      histLoading.value = true;
+      // Dispose chart before clearing data – its DOM element is inside v-else and will be removed
+      if (chartSummary) { chartSummary.dispose(); chartSummary = null; }
+      historySummary.value = null;
+      try {
+        let url = `/metrics/${sel.value.id}/summary`;
+        const params = [];
+        if (histStart.value) {
+          params.push('start=' + Math.floor(new Date(histStart.value).getTime() / 1000));
+        }
+        if (histEnd.value) {
+          // end of the selected day
+          params.push('end=' + Math.floor(new Date(histEnd.value + 'T23:59:59').getTime() / 1000));
+        }
+        if (params.length) url += '?' + params.join('&');
+        const r = await api('GET', url);
+        historySummary.value = r;
+      } catch {
+      } finally {
+        // MUST set false here so the v-else template (containing #chartSummary) is inserted into DOM
+        histLoading.value = false;
+      }
+      // Render AFTER histLoading=false; otherwise #chartSummary is still display:none / not in DOM
+      if (historySummary.value) {
+        await nextTick();
+        renderSummaryChart(historySummary.value);
+      }
+    }
+
+    function renderSummaryChart(data) {
+      const el = document.getElementById('chartSummary');
+      if (!el) return;
+      if (chartSummary) { chartSummary.dispose(); chartSummary = null; }
+      chartSummary = echarts.init(el, isDark.value ? 'dark' : 'light');
+      const palette = ['#58a6ff','#3fb950','#d29922','#f0883e','#8957e5','#bc8cff','#ffa657','#f85149'];
+      const series = Object.entries(data.buckets)
+        .filter(([,v]) => v.count > 0)
+        .map(([k, v], i) => ({ name: k, value: v.count,
+          itemStyle: { color: k === '丢包' ? '#f85149' : palette[i % palette.length] } }));
+
+      chartSummary.setOption({
+        backgroundColor: 'transparent',
+        animation: false,
+        tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)',
+          backgroundColor:'#1c2128', borderColor:'#30363d', textStyle:{color:'#e6edf3'} },
+        legend: { orient:'vertical', left:'right', top:'center',
+          textStyle:{color:'#8b949e',fontSize:11}, itemWidth:10, itemHeight:10 },
+        series: [{
+          type: 'pie', radius:['40%','70%'], center:['38%','50%'],
+          data: series,
+          label: { show:false },
+          emphasis: { itemStyle: { shadowBlur:8, shadowColor:'rgba(0,0,0,.5)' } }
+        }]
+      }, true);
+    }
+
+    /* ─────────────── manual compress ─────────────── */
+    async function doManualCompress() {
+      compressing.value = true;
+      try {
+        const r = await api('POST', `/metrics/compress?keep_hours=${compressKeepHours.value}`);
+        toast('压缩完成',
+          `已压缩 ${r.compressed.toLocaleString()} 条原始记录，共 ${r.buckets} 个汇总桶（保留最近 ${r.keep_hours} 小时原始数据）`,
+          'success');
+        // Refresh summary chart
+        await fetchHistorySummary();
+      } catch (e) {
+        toast('压缩失败', e.message, 'error');
+      } finally {
+        compressing.value = false;
+      }
+    }
+
+    /* ─────────────── CRUD ─────────────── */
+    let bsEdit = null, bsDelete = null;
+
+    function openAddModal() {
+      editMode.value = false;
+      form.value = { id: null, name: '', address: '', interval_ms: 1000, enabled: true, group_name: '', tags: '' };
+      bsEdit.show();
+    }
+    function openEditModal(t) {
+      editMode.value = true;
+      form.value = { ...t, enabled: !!t.enabled };
+      bsEdit.show();
+    }
+    function confirmDelete(t) {
+      delTarget.value = t;
+      bsDelete.show();
+    }
+
+    async function saveTarget() {
+      if (!form.value.name.trim() || !form.value.address.trim()) {
+        toast('提示', '请填写名称和地址', 'info'); return;
+      }
+      saving.value = true;
+      try {
+        if (editMode.value) {
+          await api('PUT', `/targets/${form.value.id}`, form.value);
+          toast('成功', '目标已更新', 'success');
+        } else {
+          await api('POST', '/targets', form.value);
+          toast('成功', '目标已添加', 'success');
+        }
+        bsEdit.hide();
+        await fetchAll();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        saving.value = false;
+      }
+    }
+
+    async function toggleTarget(t) {
+      try {
+        await api('PUT', `/targets/${t.id}`, { enabled: !t.enabled });
+        toast('成功', `目标已${t.enabled ? '停用' : '启用'}`, 'success');
+        await fetchAll();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      }
+    }
+
+    async function doDelete() {
+      if (!delTarget.value) return;
+      saving.value = true;
+      try {
+        await api('DELETE', `/targets/${delTarget.value.id}`);
+        toast('成功', '目标已删除', 'success');
+        bsDelete.hide();
+        await fetchAll();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      } finally {
+        saving.value = false;
+      }
+    }
+
+    /* ─────────────── lifecycle ─────────────── */
+    let pollTimer = null;
+    let recentTimer = null;
+
+    onMounted(async () => {
+      bsDetail   = new bootstrap.Modal(document.getElementById('modalDetail'));
+      bsEdit     = new bootstrap.Modal(document.getElementById('modalEdit'));
+      bsDelete   = new bootstrap.Modal(document.getElementById('modalDelete'));
+      bsChangePw = new bootstrap.Modal(document.getElementById('modalChangePw'));
+
+      document.getElementById('modalDetail').addEventListener('shown.bs.modal', async () => {
+        // Load live chart first (default tab)
+        await loadLiveChart();
+        // Refresh historical chart and status strip in background
+        fetchChartData();
+        refreshDetailStatus();
+      });
+      document.getElementById('modalDetail').addEventListener('hidden.bs.modal', () => {
+        disconnectSSE();
+        chartLive?.dispose();    chartLive    = null;
+        chartMain?.dispose();    chartMain    = null;
+        chartSummary?.dispose(); chartSummary = null;
+        sel.value = null;
+      });
+
+      window.addEventListener('resize', () => {
+        // Only resize charts that are currently visible to avoid wasted work
+        const modal = document.getElementById('detailModal');
+        const modalVisible = modal && modal.classList.contains('show');
+        if (!modalVisible) return;
+        if (dTab.value === 'live')    chartLive?.resize();
+        if (dTab.value === 'chart')   chartMain?.resize();
+        if (dTab.value === 'history') chartSummary?.resize();
+      });
+
+      await fetchAll();
+      await fetchAllRecent();
+      pollTimer   = setInterval(fetchAllStatuses, 2_000);
+      recentTimer = setInterval(fetchAllRecent,   1_000);
+    });
+
+    onUnmounted(() => {
+      clearInterval(pollTimer);
+      clearInterval(recentTimer);
+    });
+
+    return {
+      isDark, toggleTheme,
+      pwForm, pwSaving, openChangePwModal, savePassword, doLogout,
+      targets, statuses, recentPkts, loading, lastRefresh,
+      filterGroup, filterTag, filterSearch,
+      allGroups, allTags, filteredTargets, visibleGroups,
+      packetBar,
+      sel, detailStatus, dTab,
+      chartLoading, chartEmpty, chartStats, presets, rangePreset, customActive, cStart, cEnd,
+      lossLoading, lossItems, lossTotal, lossPage, lossTotalPages,
+      historySummary, histLoading, histPresets, histPreset, histCustomActive, histStart, histEnd,
+      applyHistPreset, applyHistCustom,
+      compressKeepHours, compressing, doManualCompress,
+      // live / SSE
+      liveData, liveCurrent, sseConnected, liveAvg, liveLossRate,
+      editMode, form, saving, delTarget,
+      toasts,
+      goodCount, warnCount, badCount, disabledCount,
+      ringClass, latencyColor, lossColor, fmt, fmtDt,
+      rmToast,
+      fetchAll,
+      openDetail,
+      applyPreset, applyCustom, fetchChartData,
+      fetchLossEvents, changeLossPage, switchTab,
+      openAddModal, openEditModal, confirmDelete,
+      saveTarget, toggleTarget, doDelete,
+    };
+  }
+}).mount('#app');
+</script>
+</body>
+</html>

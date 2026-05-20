@@ -1,0 +1,170 @@
+import re
+from typing import Optional
+
+import aiosqlite
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field, field_validator
+
+from ..database import DB_PATH
+from ..state import ping_manager
+
+router = APIRouter(prefix="/api/targets", tags=["targets"])
+
+# Strict allow-list: hostname labels, IPv4, IPv6 (no leading dash, no shell meta)
+_ADDR_RE = re.compile(
+    r'^('
+    r'(?:[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)*[a-zA-Z0-9](?:[a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?'  # hostname
+    r'|(?:\d{1,3}\.){3}\d{1,3}'          # IPv4
+    r'|[0-9a-fA-F:]{2,39}'               # IPv6 (simplified)
+    r')$'
+)
+
+
+def _validate_address(v: str) -> str:
+    v = v.strip()
+    if not v:
+        raise ValueError("地址不能为空")
+    if not _ADDR_RE.match(v):
+        raise ValueError("地址格式无效，仅支持域名、IPv4 或 IPv6")
+    return v
+
+
+# ------------------------------------------------------------------ #
+# Schemas
+# ------------------------------------------------------------------ #
+
+class TargetCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=64)
+    address: str
+    interval_ms: int = Field(1000, ge=500, le=60000)
+    enabled: bool = True
+    group_name: str = Field("", max_length=64)
+    tags: str = Field("", max_length=256)   # comma-separated
+
+    @field_validator("address")
+    @classmethod
+    def _check_address(cls, v: str) -> str:
+        return _validate_address(v)
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, v: str) -> str:
+        return v.strip()
+
+
+class TargetUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=64)
+    address: Optional[str] = None
+    interval_ms: Optional[int] = Field(None, ge=500, le=60000)
+    enabled: Optional[bool] = None
+    group_name: Optional[str] = Field(None, max_length=64)
+    tags: Optional[str] = Field(None, max_length=256)
+
+    @field_validator("address")
+    @classmethod
+    def _check_address(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        return _validate_address(v)
+
+
+# ------------------------------------------------------------------ #
+# Endpoints
+# ------------------------------------------------------------------ #
+
+@router.get("")
+async def list_targets():
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM targets ORDER BY group_name, name"
+        ) as cur:
+            rows = await cur.fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.get("/groups")
+async def list_groups():
+    """Return distinct non-empty group names."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT DISTINCT group_name FROM targets WHERE group_name != '' ORDER BY group_name"
+        ) as cur:
+            rows = await cur.fetchall()
+    return [r["group_name"] for r in rows]
+
+
+@router.post("", status_code=201)
+async def create_target(body: TargetCreate):
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute(
+            """INSERT INTO targets (name, address, interval_ms, enabled, group_name, tags)
+               VALUES (?,?,?,?,?,?)""",
+            (body.name, body.address, body.interval_ms,
+             1 if body.enabled else 0, body.group_name, body.tags),
+        )
+        await db.commit()
+        target_id = cur.lastrowid
+
+    if body.enabled:
+        ping_manager.add_target(target_id, body.address, body.interval_ms)
+
+    return {"id": target_id, **body.model_dump()}
+
+
+@router.put("/{target_id}")
+async def update_target(target_id: int, body: TargetUpdate):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM targets WHERE id=?", (target_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Target not found")
+
+        updates: dict = {}
+        if body.name is not None:       updates["name"]       = body.name
+        if body.address is not None:    updates["address"]    = body.address
+        if body.interval_ms is not None:updates["interval_ms"]= body.interval_ms
+        if body.enabled is not None:    updates["enabled"]    = 1 if body.enabled else 0
+        if body.group_name is not None: updates["group_name"] = body.group_name
+        if body.tags is not None:       updates["tags"]       = body.tags
+
+        if updates:
+            set_clause = ", ".join(f"{k}=?" for k in updates)
+            await db.execute(
+                f"UPDATE targets SET {set_clause} WHERE id=?",
+                (*updates.values(), target_id),
+            )
+            await db.commit()
+
+        async with db.execute(
+            "SELECT * FROM targets WHERE id=?", (target_id,)
+        ) as cur:
+            updated = dict(await cur.fetchone())
+
+    if updated["enabled"]:
+        ping_manager.add_target(target_id, updated["address"], updated["interval_ms"])
+    else:
+        ping_manager.remove_target(target_id)
+
+    return updated
+
+
+@router.delete("/{target_id}")
+async def delete_target(target_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute(
+            "SELECT id FROM targets WHERE id=?", (target_id,)
+        ) as cur:
+            if not await cur.fetchone():
+                raise HTTPException(404, "Target not found")
+        await db.execute("DELETE FROM targets        WHERE id=?",        (target_id,))
+        await db.execute("DELETE FROM ping_results   WHERE target_id=?", (target_id,))
+        await db.execute("DELETE FROM ping_summary   WHERE target_id=?", (target_id,))
+        await db.commit()
+
+    ping_manager.remove_target(target_id)
+    return {"ok": True}
