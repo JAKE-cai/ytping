@@ -41,7 +41,7 @@ _ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "").split(",")
 _ALLOWED_ORIGINS = [o.strip() for o in _ALLOWED_ORIGINS if o.strip()] or ["*"]
 
 app = FastAPI(
-    title="Network Monitor",
+    title="YTPing-网络质量监控",
     docs_url=None if _PROD else "/api/docs",
     redoc_url=None,
 )

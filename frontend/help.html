@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-bs-theme="dark" id="htmlRoot">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>使用说明 - YTPing-网络质量监控</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" />
+  <style>
+    :root {
+      --bg-base: #0d1117;
+      --bg-card: #161b22;
+      --border: #30363d;
+      --text-muted: #8b949e;
+    }
+    body { background: var(--bg-base); color: #e6edf3; font-size: 14px; line-height: 1.65; }
+    .top-nav { background: #010409; border-bottom: 1px solid var(--border); }
+    .help-wrap { max-width: 880px; margin: 0 auto; padding: 24px 20px 48px; }
+    .help-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+      margin-bottom: 16px;
+    }
+    .help-card h2 { font-size: 1.05rem; margin-bottom: 12px; color: #58a6ff; }
+    .help-card h3 { font-size: 0.95rem; margin: 14px 0 8px; }
+    .help-card ul { margin-bottom: 0; padding-left: 1.25rem; }
+    .help-card li { margin-bottom: 6px; }
+    .help-card code { color: #79c0ff; background: #1c2128; padding: 1px 6px; border-radius: 4px; font-size: 12px; }
+    .brand-icon { color: #58a6ff; }
+    [data-bs-theme="light"] {
+      --bg-base: #f6f8fa;
+      --bg-card: #ffffff;
+      --border: #d0d7de;
+      --text-muted: #57606a;
+    }
+    [data-bs-theme="light"] body { color: #1f2328; }
+    [data-bs-theme="light"] .top-nav { background: #fff; }
+    [data-bs-theme="light"] .help-card h2 { color: #0969da; }
+    [data-bs-theme="light"] .help-card code { color: #0550ae; background: #f0f2f5; }
+    [data-bs-theme="light"] .brand-icon { color: #0969da; }
+  </style>
+</head>
+<body>
+  <nav class="top-nav px-3 py-2 d-flex align-items-center justify-content-between">
+    <span class="fw-semibold fs-6">
+      <i class="bi bi-activity brand-icon me-2"></i>YTPing-网络质量监控 · 使用说明
+    </span>
+    <div class="d-flex align-items-center gap-2">
+      <a href="/" class="btn btn-sm btn-primary py-0"><i class="bi bi-house me-1"></i>返回监控</a>
+      <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="btnTheme" title="切换主题">
+        <i class="bi bi-sun" id="themeIcon"></i>
+      </button>
+    </div>
+  </nav>
+
+  <div class="help-wrap">
+    <p class="mb-4" style="color:var(--text-muted)">
+      本文介绍 YTPing 监控平台的主要功能与常见操作。默认访问地址：<code>http://&lt;服务器&gt;:3000</code>。
+    </p>
+
+    <section class="help-card">
+      <h2><i class="bi bi-box-arrow-in-right me-2"></i>登录与安全</h2>
+      <ul>
+        <li>首次部署后使用默认管理员密码登录（请尽快在右上角菜单中<strong>修改密码</strong>）。</li>
+        <li>登录状态保存在浏览器本地；退出登录或改密后需重新登录。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-bullseye me-2"></i>监控目标</h2>
+      <h3>添加 / 编辑</h3>
+      <ul>
+        <li>点击<strong>添加目标</strong>，填写名称、地址（域名或 IP）、探测间隔（500ms～60s，默认 1 秒）。</li>
+        <li>可设置<strong>分组</strong>、<strong>标签</strong>（多个标签用英文逗号分隔），便于首页筛选。</li>
+        <li>卡片上显示 <code>ID n</code> 为系统内部编号，定时任务「指定 ID」范围时使用。</li>
+      </ul>
+      <h3>卡片菜单</h3>
+      <ul>
+        <li><strong>编辑</strong>、<strong>克隆</strong>（复制配置并自动命名）、<strong>启用/停用</strong>、<strong>删除</strong>。</li>
+        <li>点击卡片进入详情：实时、延迟趋势、丢包记录、历史统计。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-grid me-2"></i>首页看板</h2>
+      <ul>
+        <li>顶部统计：正常 / 告警 / 异常 / 停用数量（基于近 1 分钟探测）。</li>
+        <li>可按<strong>分组</strong>、<strong>标签</strong>、关键词筛选；支持<strong>刷新</strong>自动更新。</li>
+        <li>卡片内<strong>20 格色块</strong>表示最近约 20 秒每秒探测结果（绿/黄/红/灰）。</li>
+        <li>均值延迟、丢包率标注为「近 1 分钟」。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-graph-up me-2"></i>详情页说明</h2>
+      <ul>
+        <li><strong>实时</strong>：近 5 分钟折线图，SSE 推送；显示当前样本与丢包率。</li>
+        <li><strong>延迟趋势</strong>：自定义 1H～7D 或时间范围，查看 Min/Avg/Max 与丢包率曲线及区间统计。</li>
+        <li><strong>丢包记录</strong>：分页浏览历史丢包时间点。</li>
+        <li><strong>历史统计</strong>：7 天前数据压缩为延迟分布桶与丢包比例；可筛选时间并<strong>手动压缩</strong>更早的原始数据。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-toggles me-2"></i>批量启停</h2>
+      <ul>
+        <li>导航栏 <strong>批量启停</strong>：对「当前筛选结果 / 全部 / 指定分组 / 指定标签」一次性启用或停用。</li>
+        <li><strong>停用</strong>后不再 ping，适合夜间关机、维护窗口，避免无意义丢包入库。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-clock-history me-2"></i>定时启停</h2>
+      <ul>
+        <li>按容器<strong>本地时间</strong>每天在设定时刻执行（建议配置环境变量 <code>TZ=Asia/Shanghai</code>）。</li>
+        <li>范围：全部目标、<strong>分组/标签（可多选）</strong>、或指定 ID（逗号分隔，见卡片 ID）。</li>
+        <li>典型用法：22:00 <strong>停用</strong> + 08:00 <strong>启用</strong> 两条规则。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-docker me-2"></i>部署提示</h2>
+      <ul>
+        <li>镜像需 <code>--cap-add=NET_RAW</code> 以支持 ping；数据目录挂载到 <code>/data</code>（如 <code>-v /path/ytping:/data</code>）。</li>
+        <li>端口映射示例：<code>-p 3000:3000</code>。离线包导入与运行参数见项目 <code>DOCKER-YTPING.md</code>。</li>
+        <li>仅暴露 Web 端口；数据库为容器内 SQLite 文件，无单独数据库端口。</li>
+      </ul>
+    </section>
+
+    <section class="help-card">
+      <h2><i class="bi bi-palette me-2"></i>界面主题</h2>
+      <ul>
+        <li>右上角可切换深色 / 浅色主题，偏好会保存在浏览器中。</li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    (function () {
+      const saved = localStorage.getItem('nm-theme') || 'dark';
+      const root = document.getElementById('htmlRoot');
+      const icon = document.getElementById('themeIcon');
+      root.setAttribute('data-bs-theme', saved);
+      icon.className = saved === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+      document.getElementById('btnTheme').onclick = function () {
+        const next = root.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+        root.setAttribute('data-bs-theme', next);
+        localStorage.setItem('nm-theme', next);
+        icon.className = next === 'dark' ? 'bi bi-sun' : 'bi bi-moon-stars';
+      };
+    })();
+  </script>
+</body>
+</html>
