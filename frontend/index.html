@@ -407,8 +407,9 @@
 
             <!-- 20-second packet bar (1 seg / block) -->
             <div v-if="t.enabled" class="packet-bar mt-2">
-              <div v-for="(seg, i) in packetBar(t.id)" :key="i"
-                class="seg" :class="seg" :title="seg==='seg-ok'?'正常':seg==='seg-warn'?'告警':seg==='seg-bad'?'异常':'无数据'">
+              <div v-for="slot in packetBar(t.id)" :key="slot.sec"
+                class="seg" :class="slot.seg"
+                :title="slot.seg==='seg-ok'?'正常':slot.seg==='seg-warn'?'告警':slot.seg==='seg-bad'?'异常':'无数据'">
               </div>
             </div>
 
@@ -1173,38 +1174,48 @@ createApp({
     }
 
     /* ─────────────── packet bar ─────────────── */
+    function _segClass(inSec) {
+      if (!inSec.length) return 'seg-none';
+      if (inSec.some(p => Number(p.is_loss) === 1)) return 'seg-bad';
+      const maxMs = Math.max(...inSec.map(p => p.latency_ms ?? 0));
+      if (maxMs >= 200) return 'seg-bad';
+      if (maxMs >= 100) return 'seg-warn';
+      return 'seg-ok';
+    }
+
     function packetBar(targetId) {
-      const BAR_SLOTS = 20;  // 20 seconds, one block per second
+      const BAR_SLOTS = 20;
       const pkts = recentPkts.value[targetId] || [];
-      const clientNow = Math.floor(Date.now() / 1000);
-      const serverNow = recentServerTs.value || clientNow;
-      // Anchor to server time; extend end if this target's latest sample is newer
-      let endSec = serverNow;
-      if (pkts.length) {
-        const maxPktTs = Math.max(...pkts.map(p => p.ts));
-        endSec = Math.max(endSec, maxPktTs);
+      const bySec = {};
+      for (const p of pkts) {
+        const s = Number(p.ts);
+        if (!Number.isFinite(s)) continue;
+        (bySec[s] ||= []).push(p);
       }
+      const pktSecs = Object.keys(bySec).map(Number);
+      const serverNow = recentServerTs.value || Math.floor(Date.now() / 1000);
+      // Right edge = latest sample second (NOT server "now" — batch write lags ~1s and
+      // would leave several trailing empty blocks if we anchored to serverNow).
+      const endSec = pktSecs.length ? Math.max(...pktSecs) : serverNow;
 
       return Array.from({ length: BAR_SLOTS }, (_, i) => {
         const sec = endSec - (BAR_SLOTS - 1 - i);
-        const inSec = pkts.filter(p => p.ts === sec);
-        if (!inSec.length) return 'seg-none';
-        if (inSec.some(p => p.is_loss)) return 'seg-bad';
-        const maxMs = Math.max(...inSec.map(p => p.latency_ms ?? 0));
-        if (maxMs >= 200) return 'seg-bad';
-        if (maxMs >= 100) return 'seg-warn';
-        return 'seg-ok';
+        return { sec, seg: _segClass(bySec[sec] || []) };
       });
     }
 
     async function fetchAllRecent() {
       try {
-        const res = await api('GET', '/metrics/all-recent?seconds=20');
+        // Pull extra history so 20 slots ending at latest ts are fully covered
+        const res = await api('GET', '/metrics/all-recent?seconds=30');
         const payload = res.data != null ? res : { server_ts: Math.floor(Date.now() / 1000), data: res };
         recentServerTs.value = payload.server_ts || Math.floor(Date.now() / 1000);
-        const next = { ...recentPkts.value };
-        for (const [k, v] of Object.entries(payload.data || {})) {
-          next[parseInt(k)] = v;
+        const data = payload.data || {};
+        const next = {};
+        for (const t of targets.value) {
+          if (!t.enabled) continue;
+          const raw = data[t.id] ?? data[String(t.id)];
+          next[t.id] = Array.isArray(raw) ? raw : [];
         }
         recentPkts.value = next;
       } catch {}

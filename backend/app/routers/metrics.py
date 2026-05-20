@@ -344,9 +344,10 @@ async def stream_ping(target_id: int, request: Request, token: Optional[str] = Q
 # ------------------------------------------------------------------ #
 
 @router.get("/all-recent")
-async def get_all_recent(seconds: int = Query(5, ge=1, le=30)):
+async def get_all_recent(seconds: int = Query(5, ge=1, le=60)):
     """Return last N seconds of raw ping results for ALL targets (for card live bars)."""
-    since = int(time.time()) - seconds
+    server_ts = int(time.time())
+    since = server_ts - seconds
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
@@ -359,19 +360,22 @@ async def get_all_recent(seconds: int = Query(5, ge=1, le=30)):
             (since,),
         ) as cur:
             rows = await cur.fetchall()
+        async with db.execute(
+            "SELECT id FROM targets WHERE enabled=1"
+        ) as cur:
+            enabled_ids = [r[0] for r in await cur.fetchall()]
 
-    result: dict = {}
+    result: dict = {tid: [] for tid in enabled_ids}
     for r in rows:
         tid = r["target_id"]
         if tid not in result:
             result[tid] = []
         result[tid].append({
-            "ts": r["ts"],
+            "ts": int(r["ts"]),
             "latency_ms": r["latency_ms"],
-            "is_loss": r["is_loss"],
+            "is_loss": int(r["is_loss"]),
         })
-    # server_ts aligns card bars to DB clock (avoids client/server skew empty tail slots)
-    return {"server_ts": int(time.time()), "data": result}
+    return {"server_ts": server_ts, "data": result}
 
 
 import asyncio as _asyncio
