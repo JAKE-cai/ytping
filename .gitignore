@@ -19,3 +19,6 @@ venv/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Docker 离线导出目录
+dist/

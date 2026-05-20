@@ -1,0 +1,37 @@
+# Git / VCS（不进入构建上下文）
+.git
+**/.git
+.gitattributes
+
+# 密钥与本地环境（不进入构建上下文）
+.env
+.env.*
+!.env.example
+
+# 本地数据库与日志
+*.db
+*.sqlite
+*.sqlite3
+*.log
+/data/
+
+# Python 虚拟环境与缓存
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 导出产物（避免把旧镜像层打进新构建）
+dist/
+*.tar
+*.tar.gz
+
+# Compose 仅编排用，镜像内不需要；排除可减小 context
+docker-compose.yml
