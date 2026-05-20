@@ -370,7 +370,8 @@ async def get_all_recent(seconds: int = Query(5, ge=1, le=30)):
             "latency_ms": r["latency_ms"],
             "is_loss": r["is_loss"],
         })
-    return result
+    # server_ts aligns card bars to DB clock (avoids client/server skew empty tail slots)
+    return {"server_ts": int(time.time()), "data": result}
 
 
 import asyncio as _asyncio

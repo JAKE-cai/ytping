@@ -95,6 +95,20 @@ async def list_groups():
     return [r["group_name"] for r in rows]
 
 
+async def _unique_clone_name(db: aiosqlite.Connection, base_name: str) -> str:
+    """Pick a non-colliding name: 'xxx (副本)', 'xxx (副本2)', ..."""
+    candidate = f"{base_name} (副本)"
+    n = 2
+    while True:
+        async with db.execute(
+            "SELECT 1 FROM targets WHERE name=?", (candidate,)
+        ) as cur:
+            if not await cur.fetchone():
+                return candidate
+        candidate = f"{base_name} (副本{n})"
+        n += 1
+
+
 @router.post("", status_code=201)
 async def create_target(body: TargetCreate):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -111,6 +125,48 @@ async def create_target(body: TargetCreate):
         ping_manager.add_target(target_id, body.address, body.interval_ms)
 
     return {"id": target_id, **body.model_dump()}
+
+
+@router.post("/{target_id}/clone", status_code=201)
+async def clone_target(target_id: int):
+    """Duplicate a target (same address/settings); new row gets a unique name."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM targets WHERE id=?", (target_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if not row:
+            raise HTTPException(404, "Target not found")
+        src = dict(row)
+        new_name = await _unique_clone_name(db, src["name"])
+        cur = await db.execute(
+            """INSERT INTO targets (name, address, interval_ms, enabled, group_name, tags)
+               VALUES (?,?,?,?,?,?)""",
+            (
+                new_name,
+                src["address"],
+                src["interval_ms"],
+                src["enabled"],
+                src["group_name"],
+                src["tags"],
+            ),
+        )
+        await db.commit()
+        new_id = cur.lastrowid
+
+    if src["enabled"]:
+        ping_manager.add_target(new_id, src["address"], src["interval_ms"])
+
+    return {
+        "id": new_id,
+        "name": new_name,
+        "address": src["address"],
+        "interval_ms": src["interval_ms"],
+        "enabled": bool(src["enabled"]),
+        "group_name": src["group_name"],
+        "tags": src["tags"],
+    }
 
 
 @router.put("/{target_id}")

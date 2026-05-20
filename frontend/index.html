@@ -367,6 +367,7 @@
                   </button>
                   <ul class="dropdown-menu dropdown-menu-end dropdown-menu-dark" style="font-size:13px">
                     <li><a class="dropdown-item" href="#" @click.prevent="openEditModal(t)"><i class="bi bi-pencil me-2"></i>编辑</a></li>
+                    <li><a class="dropdown-item" href="#" @click.prevent="cloneTarget(t)"><i class="bi bi-copy me-2"></i>克隆</a></li>
                     <li><a class="dropdown-item" href="#" @click.prevent="toggleTarget(t)">
                       <i class="bi me-2" :class="t.enabled ? 'bi-pause-circle' : 'bi-play-circle'"></i>
                       {{ t.enabled ? '停用' : '启用' }}
@@ -404,7 +405,7 @@
             </div>
             <div v-else class="text-center py-1" style="font-size:12px;color:var(--text-muted)">已停用</div>
 
-            <!-- 5-second packet bar -->
+            <!-- 20-second packet bar (1 seg / block) -->
             <div v-if="t.enabled" class="packet-bar mt-2">
               <div v-for="(seg, i) in packetBar(t.id)" :key="i"
                 class="seg" :class="seg" :title="seg==='seg-ok'?'正常':seg==='seg-warn'?'告警':seg==='seg-bad'?'异常':'无数据'">
@@ -979,7 +980,8 @@ createApp({
     /* ─────────────── state ─────────────── */
     const targets     = ref([]);
     const statuses    = ref({});   // { [id]: {total,loss,loss_rate,avg/min/max_latency} }
-    const recentPkts  = ref({});   // { [target_id]: [{ts,latency_ms,is_loss},...] } last 5s
+    const recentPkts  = ref({});   // { [target_id]: [{ts,latency_ms,is_loss},...] } last 20s
+    const recentServerTs = ref(0); // server clock for packet bar alignment
     const loading     = ref(false);
     const lastRefresh = ref('');
 
@@ -1172,17 +1174,21 @@ createApp({
 
     /* ─────────────── packet bar ─────────────── */
     function packetBar(targetId) {
-      const BAR_SLOTS = 20;  // 20 seconds
+      const BAR_SLOTS = 20;  // 20 seconds, one block per second
       const pkts = recentPkts.value[targetId] || [];
-      const nowSec = Math.floor(Date.now() / 1000);
+      const clientNow = Math.floor(Date.now() / 1000);
+      const serverNow = recentServerTs.value || clientNow;
+      // Anchor to server time; extend end if this target's latest sample is newer
+      let endSec = serverNow;
+      if (pkts.length) {
+        const maxPktTs = Math.max(...pkts.map(p => p.ts));
+        endSec = Math.max(endSec, maxPktTs);
+      }
 
-      // Build one slot per second, from (now-19) to now
       return Array.from({ length: BAR_SLOTS }, (_, i) => {
-        const sec = nowSec - (BAR_SLOTS - 1 - i);
-        // find all packets in this second
+        const sec = endSec - (BAR_SLOTS - 1 - i);
         const inSec = pkts.filter(p => p.ts === sec);
         if (!inSec.length) return 'seg-none';
-        // worst-case: loss > high latency > warn > ok
         if (inSec.some(p => p.is_loss)) return 'seg-bad';
         const maxMs = Math.max(...inSec.map(p => p.latency_ms ?? 0));
         if (maxMs >= 200) return 'seg-bad';
@@ -1193,10 +1199,14 @@ createApp({
 
     async function fetchAllRecent() {
       try {
-        const data = await api('GET', '/metrics/all-recent?seconds=20');
-        const updated = {};
-        for (const [k, v] of Object.entries(data)) updated[parseInt(k)] = v;
-        recentPkts.value = updated;
+        const res = await api('GET', '/metrics/all-recent?seconds=20');
+        const payload = res.data != null ? res : { server_ts: Math.floor(Date.now() / 1000), data: res };
+        recentServerTs.value = payload.server_ts || Math.floor(Date.now() / 1000);
+        const next = { ...recentPkts.value };
+        for (const [k, v] of Object.entries(payload.data || {})) {
+          next[parseInt(k)] = v;
+        }
+        recentPkts.value = next;
       } catch {}
     }
 
@@ -1793,6 +1803,16 @@ createApp({
       }
     }
 
+    async function cloneTarget(t) {
+      try {
+        const created = await api('POST', `/targets/${t.id}/clone`);
+        toast('成功', `已克隆为「${created.name}」`, 'success');
+        await fetchAll();
+      } catch (e) {
+        toast('错误', e.message, 'error');
+      }
+    }
+
     async function doDelete() {
       if (!delTarget.value) return;
       saving.value = true;
@@ -1879,7 +1899,7 @@ createApp({
       applyPreset, applyCustom, fetchChartData,
       fetchLossEvents, changeLossPage, switchTab,
       openAddModal, openEditModal, confirmDelete,
-      saveTarget, toggleTarget, doDelete,
+      saveTarget, toggleTarget, cloneTarget, doDelete,
     };
   }
 }).mount('#app');
