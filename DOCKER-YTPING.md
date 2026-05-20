@@ -1,4 +1,6 @@
-# 镜像 `ytping:1.0` 离线包与运行说明
+# 镜像 `ytping:1.1` 离线包与运行说明
+
+当前推荐 **`ytping:1.1`**（含登录页密码框被轮询清空等前端修复）。旧包 **`ytping:1.0`** 仍可 `docker load`，但建议升级到 1.1。
 
 ## 离线导入
 
@@ -6,14 +8,14 @@
 
 ```bash
 # 方式一：先解压再 load
-gzip -d ytping_1.0.tar.gz
-docker load -i ytping_1.0.tar
+gzip -d ytping_1.1.tar.gz
+docker load -i ytping_1.1.tar
 
 # 方式二：管道（Linux / macOS / Git Bash）
-gunzip -c ytping_1.0.tar.gz | docker load
+gunzip -c ytping_1.1.tar.gz | docker load
 ```
 
-导入成功后本地会有镜像 **`ytping:1.0`**。
+导入成功后本地会有镜像 **`ytping:1.1`**。
 
 ---
 
@@ -53,7 +55,7 @@ docker run -d --name ytping \
   -p 3000:3000 \
   -v "$(pwd)/ytping-data:/data" \
   -e PYTHONUNBUFFERED=1 \
-  ytping:1.0
+  ytping:1.1
 ```
 
 Windows PowerShell 示例：
@@ -66,7 +68,7 @@ docker run -d --name ytping `
   -p 3000:3000 `
   -v "${PWD}\ytping-data:/data" `
   -e PYTHONUNBUFFERED=1 `
-  ytping:1.0
+  ytping:1.1
 ```
 
 浏览器访问：`http://localhost:3000`（首次请尽快修改默认管理员密码）。
