@@ -1,6 +1,6 @@
-# 镜像 `ytping:1.4` 离线包与运行说明
+# 镜像 `ytping:1.5` 离线包与运行说明
 
-当前推荐 **`ytping:1.4`**（YTPing 品牌、使用说明页、批量/定时启停、浅色表格修复等）。旧包 **`ytping:1.0`～`1.3`** 仍可 `docker load`，建议升级到 1.4。
+当前推荐 **`ytping:1.5`**（支持内网/离线环境：Bootstrap/Vue/ECharts/Icons 已内置到 `/static/vendor`，不再依赖外网 CDN）。旧包 **`ytping:1.0`～`1.4`** 仍可 `docker load`，建议升级到 1.5。
 
 ## 离线导入
 
@@ -8,14 +8,14 @@
 
 ```bash
 # 方式一：先解压再 load
-gzip -d ytping_1.4.tar.gz
-docker load -i ytping_1.4.tar
+gzip -d ytping_1.5.tar.gz
+docker load -i ytping_1.5.tar
 
 # 方式二：管道（Linux / macOS / Git Bash）
-gunzip -c ytping_1.4.tar.gz | docker load
+gunzip -c ytping_1.5.tar.gz | docker load
 ```
 
-导入成功后本地会有镜像 **`ytping:1.4`**。
+导入成功后本地会有镜像 **`ytping:1.5`**。
 
 ---
 
