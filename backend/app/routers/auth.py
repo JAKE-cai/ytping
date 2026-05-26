@@ -70,8 +70,10 @@ async def api_login(body: LoginBody, request: Request):
 
 
 @router.post("/logout", dependencies=[Depends(_require_auth)])
-async def api_logout():
-    await logout(DB_PATH)
+async def api_logout(request: Request):
+    auth = request.headers.get("authorization", "")
+    token = auth[7:] if auth.lower().startswith("bearer ") else ""
+    await logout(token, DB_PATH)
     return {"ok": True}
 
 

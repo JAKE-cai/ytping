@@ -16,9 +16,12 @@ DEFAULT_PASSWORD = "Huawei@123"
 _pwd_ctx = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 
 # In-memory token cache — avoids a DB round-trip on every authenticated request.
-# { token: valid_until_epoch }
+# { token: valid_until_monotonic }
 _TOKEN_CACHE: dict[str, float] = {}
 _TOKEN_TTL = 30.0   # seconds before re-validating from DB
+
+# Session expiry (seconds)
+SESSION_TTL_SECONDS = 7 * 24 * 3600
 
 
 async def ensure_admin(db_path: str) -> None:
@@ -34,9 +37,6 @@ async def ensure_admin(db_path: str) -> None:
                 "INSERT OR IGNORE INTO settings (key, value) VALUES ('password_hash', ?)",
                 (hashed,),
             )
-            await db.execute(
-                "INSERT OR IGNORE INTO settings (key, value) VALUES ('session_token', '')"
-            )
             await db.commit()
             logger.info("Admin account created with default password")
 
@@ -47,7 +47,7 @@ def _invalidate_token_cache() -> None:
 
 
 async def login(password: str, db_path: str) -> Optional[str]:
-    """Verify password; on success return a new session token, else None."""
+    """Verify password; on success create and return a new session token, else None."""
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
             "SELECT value FROM settings WHERE key='password_hash'"
@@ -58,20 +58,23 @@ async def login(password: str, db_path: str) -> Optional[str]:
         if not _pwd_ctx.verify(password, row[0]):
             return None
         token = secrets.token_hex(32)
+        now = int(time.time())
+        expires_at = now + SESSION_TTL_SECONDS
         await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('session_token', ?)",
-            (token,),
+            "INSERT OR REPLACE INTO sessions (token, created_at, expires_at) VALUES (?, ?, ?)",
+            (token, now, expires_at),
         )
         await db.commit()
     _invalidate_token_cache()
     return token
 
 
-async def logout(db_path: str) -> None:
+async def logout(token: str, db_path: str) -> None:
+    """Invalidate a single session token."""
+    if not token:
+        return
     async with aiosqlite.connect(db_path) as db:
-        await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('session_token', '')"
-        )
+        await db.execute("DELETE FROM sessions WHERE token=?", (token,))
         await db.commit()
     _invalidate_token_cache()
 
@@ -89,10 +92,8 @@ async def change_password(old_pw: str, new_pw: str, db_path: str) -> bool:
             "INSERT OR REPLACE INTO settings (key, value) VALUES ('password_hash', ?)",
             (hashed,),
         )
-        # Invalidate existing session so re-login is required
-        await db.execute(
-            "INSERT OR REPLACE INTO settings (key, value) VALUES ('session_token', '')"
-        )
+        # Invalidate all sessions so re-login is required everywhere
+        await db.execute("DELETE FROM sessions")
         await db.commit()
     _invalidate_token_cache()
     return True
@@ -109,17 +110,26 @@ async def _verify_token(token: str, db_path: str) -> bool:
     # Slow path: validate from DB then cache result
     async with aiosqlite.connect(db_path) as db:
         async with db.execute(
-            "SELECT value FROM settings WHERE key='session_token'"
+            "SELECT expires_at FROM sessions WHERE token=?",
+            (token,),
         ) as cur:
             row = await cur.fetchone()
-    if not row or not row[0]:
+    if not row:
         _TOKEN_CACHE.pop(token, None)
         return False
-    if secrets.compare_digest(row[0], token):
-        _TOKEN_CACHE[token] = now + _TOKEN_TTL
-        return True
-    _TOKEN_CACHE.pop(token, None)
-    return False
+    expires_at = int(row[0])
+    if expires_at <= int(time.time()):
+        # best-effort cleanup
+        try:
+            async with aiosqlite.connect(db_path) as db:
+                await db.execute("DELETE FROM sessions WHERE token=?", (token,))
+                await db.commit()
+        except Exception:
+            pass
+        _TOKEN_CACHE.pop(token, None)
+        return False
+    _TOKEN_CACHE[token] = now + _TOKEN_TTL
+    return True
 
 
 # Lazy import to avoid circular dependency

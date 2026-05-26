@@ -57,6 +57,13 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT NOT NULL DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS target_schedules (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     name        TEXT    NOT NULL,
@@ -85,6 +92,12 @@ _MIGRATIONS = [
     enabled     INTEGER NOT NULL DEFAULT 1,
     created_at  INTEGER NOT NULL DEFAULT (strftime('%s','now'))
 )""",
+    """CREATE TABLE IF NOT EXISTS sessions (
+    token      TEXT PRIMARY KEY,
+    created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+    expires_at INTEGER NOT NULL
+)""",
+    "CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at)",
 ]
 
 
